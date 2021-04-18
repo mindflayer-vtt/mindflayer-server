@@ -1,0 +1,18 @@
+{
+  "name": "vtt-websocket-token-controller-server",
+  "version": "0.1.0",
+  "description": "A lightweight websocket server for relaying messages from the mobile keyboards to vtt",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "author": "749, shawly",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^7.4.4"
+  },
+  "optionalDependencies": {
+    "bufferutil": "^4.0.3",
+    "utf-8-validate": "^5.0.4"
+  }
+}
