@@ -2,12 +2,45 @@ const fs = require('fs')
 const https = require('https')
 const WebSocket = require('ws')
 const url = require('url');
+const connectionRegistry = require('./src/connection/registry')
+const messageDispatcher = require('./src/message/dispatcher')
 
-let vttReceivers = []
+connectionRegistry.attach(messageDispatcher)
 
-function receiver_remove(ws) {
-  vttReceivers = vttReceivers.filter(receiver => receiver != ws);
-}
+messageDispatcher.handlers.VTTKeyEventMessage.push(function relayKeyEvent(sourceConnection, message) {
+  connectionRegistry.getReceiverConnections()
+      .forEach(conn => conn.send(JSON.stringify(message)))
+})
+
+messageDispatcher.handlers.VTTRegistrationMessage.push(function registerEndpoint(newConnection, message){
+  newConnection.receiver = message.receiver
+  newConnection.controllerId = message['controller-id']
+  if(newConnection.receiver) {
+    // announce all known controllers
+    connectionRegistry.getControllerConnections()
+        .forEach(conn => newConnection.send(JSON.stringify({
+          type: "registration",
+          "controller-id": conn.controllerId,
+          status: "connected",
+          receiver: false
+        })))
+  } else {
+    // announce new controller
+    connectionRegistry.getReceiverConnections()
+        .forEach(conn => conn.send(JSON.stringify({
+          type: "registration",
+          "controller-id": newConnection.controllerId,
+          status: "connected",
+          receiver: false
+        })))
+  }
+})
+
+messageDispatcher.handlers.VTTConfigurationMessage.push(function configureEndpoint(connection, message) {
+  connectionRegistry.getConnections()
+      .filter(conn => conn.controllerId == message['controller-id'])
+      .forEach(conn => conn.send(JSON.stringify(message)))
+})
 
 const server = https.createServer({
   cert: fs.readFileSync('./config/certs/snakeoil.pem'),
@@ -26,53 +59,19 @@ const server = https.createServer({
 
 const wss = new WebSocket.Server({ noServer: true })
 
-function noop() {}
-function heartbeat() {
-  this.isAlive = true;
-}
-
-// check all connection by sending a ping every 30 seconds
-const interval = setInterval(function ping() {
-  wss.clients.forEach(function pingWebsocket(ws) {
-    if (ws.isAlive === false) return ws.terminate();
-
-    ws.isAlive = false;
-    ws.ping(noop);
-  });
-}, 30000);
-
 wss.on('connection', function connection(ws) {
-  ws.isAlive = true;
-  ws.on('pong', heartbeat)
+  connectionRegistry.addConnection(ws)
 
   ws.on('message', function incoming(message) {
     console.debug('received: %s', message)
     const data = JSON.parse(message)
-
-    if(data.hasOwnProperty('controller-id')) {
-      heartbeat.apply(this)
-      vttReceivers.forEach(receiver => {
-        receiver.send(JSON.stringify(data))
-      })
-      console.debug('sent message to %d receivers', vttReceivers.length)
-    } else if(data.hasOwnProperty('receiver')) {
-      heartbeat.apply(this)
-      if(data.receiver && !vttReceivers.includes(ws)) {
-        vttReceivers.push(ws)
-      } else if(!data.receiver && vttReceivers.includes(ws)) {
-        receiver_remove(ws)
-      }
-    }
+    console.dir(data)
+    messageDispatcher.dispatch(this, data);
   });
-
-  ws.on('close', function() {
-    console.info('client disconnected')
-    receiver_remove(ws)
-  })
 });
 
 wss.on('close', function close() {
-  clearInterval(interval)
+  connectionRegistry.close()
 });
 
 server.on('upgrade', function upgrade(request, socket, head) {
