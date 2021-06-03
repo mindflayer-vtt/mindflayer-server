@@ -26,12 +26,12 @@ messageDispatcher.handlers.VTTRegistrationMessage.push(function registerEndpoint
           receiver: false
         })))
   } else {
-    // announce new controller
+    // announce controller status
     connectionRegistry.getReceiverConnections()
         .forEach(conn => conn.send(JSON.stringify({
           type: "registration",
           "controller-id": newConnection.controllerId,
-          status: "connected",
+          status: message.status,
           receiver: false
         })))
   }
