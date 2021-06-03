@@ -1,7 +1,8 @@
 const fs = require('fs')
 const https = require('https')
 const WebSocket = require('ws')
-const url = require('url');
+const url = require('url')
+const moment = require('moment')
 const connectionRegistry = require('./src/connection/registry')
 const messageDispatcher = require('./src/message/dispatcher')
 
@@ -63,7 +64,7 @@ wss.on('connection', function connection(ws) {
   connectionRegistry.addConnection(ws)
 
   ws.on('message', function incoming(message) {
-    console.debug('received: %s', message)
+    console.debug('[%d] received: %s', moment().valueOf(), message)
     const data = JSON.parse(message)
     console.dir(data)
     messageDispatcher.dispatch(this, data);
