@@ -6,10 +6,12 @@ const HEALTHCHECK_TIME = 30
  * @type WebSocket[]
  */
 let connections = []
+let _dispatcher = null
 
 function noop() {}
 
 function attach(dispatcher) {
+  _dispatcher = dispatcher
   dispatcher.handlers.VTTMessage.push(heartbeat)
 }
 
@@ -30,6 +32,7 @@ function addConnection(connection) {
     connections.push(connection)
 
     connection.receiver = null
+    connection.controllerId = null
     heartbeat(connection)
     connection.on('pong', heartbeat.bind(connection, connection))
 
@@ -42,6 +45,14 @@ function addConnection(connection) {
 
 function removeConnection(connection) {
   connections = connections.filter(conn => conn != connection)
+  if(_dispatcher != null && connection.controllerId != null){
+    _dispatcher.dispatch(connection, {
+      type: "registration",
+      "controller-id": connection.controllerId,
+      status: "disconnected",
+      receiver: false
+    })
+  }
 }
 
 function heartbeat(connection) {
