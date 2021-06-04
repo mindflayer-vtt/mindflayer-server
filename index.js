@@ -1,7 +1,7 @@
 const fs = require('fs')
 const https = require('https')
 const WebSocket = require('ws')
-const url = require('url');
+const url = require('url')
 const connectionRegistry = require('./src/connection/registry')
 const messageDispatcher = require('./src/message/dispatcher')
 
@@ -48,12 +48,12 @@ const server = https.createServer({
 }, function httpRequest(req, res) {
   fs.readFile('../test/keypad.html', function (err, data) {
     if (err) {
-      res.writeHead(404);
-      res.end(JSON.stringify(err));
-      return;
+      res.writeHead(404)
+      res.end(JSON.stringify(err))
+      return
     }
-    res.writeHead(200);
-    res.end(data);
+    res.writeHead(200, { 'Content-Type': 'text/html' })
+    res.end(data, 'utf-8')
   })
 })
 
@@ -66,25 +66,25 @@ wss.on('connection', function connection(ws) {
     console.debug('received: %s', message)
     const data = JSON.parse(message)
     console.dir(data)
-    messageDispatcher.dispatch(this, data);
-  });
-});
+    messageDispatcher.dispatch(this, data)
+  })
+})
 
 wss.on('close', function close() {
   connectionRegistry.close()
-});
+})
 
 server.on('upgrade', function upgrade(request, socket, head) {
-  const pathname = url.parse(request.url).pathname;
+  const pathname = url.parse(request.url).pathname
 
   if (pathname === '/ws') {
     wss.handleUpgrade(request, socket, head, function done(ws) {
-      wss.emit('connection', ws, request);
-    });
+      wss.emit('connection', ws, request)
+    })
   } else {
-    socket.destroy();
+    socket.destroy()
   }
-});
+})
 
 server.listen(10443)
 
