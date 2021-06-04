@@ -38,7 +38,7 @@ messageDispatcher.handlers.VTTRegistrationMessage.push(function registerEndpoint
 })
 
 messageDispatcher.handlers.VTTConfigurationMessage.push(function configureEndpoint(connection, message) {
-  connectionRegistry.getConnections()
+  connectionRegistry.getControllerConnections()
       .filter(conn => conn.controllerId == message['controller-id'])
       .forEach(conn => conn.send(JSON.stringify(message)))
 })
