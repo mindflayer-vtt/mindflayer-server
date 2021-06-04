@@ -2,6 +2,7 @@ const fs = require('fs')
 const https = require('https')
 const WebSocket = require('ws')
 const url = require('url')
+const moment = require('moment')
 const connectionRegistry = require('./src/connection/registry')
 const messageDispatcher = require('./src/message/dispatcher')
 
@@ -25,12 +26,12 @@ messageDispatcher.handlers.VTTRegistrationMessage.push(function registerEndpoint
           receiver: false
         })))
   } else {
-    // announce new controller
+    // announce controller status
     connectionRegistry.getReceiverConnections()
         .forEach(conn => conn.send(JSON.stringify({
           type: "registration",
           "controller-id": newConnection.controllerId,
-          status: "connected",
+          status: message.status,
           receiver: false
         })))
   }
@@ -63,7 +64,7 @@ wss.on('connection', function connection(ws) {
   connectionRegistry.addConnection(ws)
 
   ws.on('message', function incoming(message) {
-    console.debug('received: %s', message)
+    console.debug('[%d] received: %s', moment().valueOf(), message)
     const data = JSON.parse(message)
     console.dir(data)
     messageDispatcher.dispatch(this, data)

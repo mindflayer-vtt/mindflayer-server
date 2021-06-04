@@ -18,7 +18,7 @@ function VTTMessageHandler(origin, message) {
       case "registration":
         selected = handlers.VTTRegistrationMessage
         break;
-      case "Configuration":
+      case "configuration":
         selected = handlers.VTTConfigurationMessage
         break;
       default:
