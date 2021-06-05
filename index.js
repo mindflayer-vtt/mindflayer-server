@@ -17,7 +17,7 @@ messageDispatcher.handlers.VTTRegistrationMessage.push(function registerEndpoint
   newConnection.receiver = message.receiver
   newConnection.controllerId = message['controller-id']
   if(newConnection.receiver) {
-    // announce all known controllers
+    console.log("[%d] announce all known controllers to new receiver", moment().valueOf())
     connectionRegistry.getControllerConnections()
         .forEach(conn => newConnection.send(JSON.stringify({
           type: "registration",
@@ -26,7 +26,7 @@ messageDispatcher.handlers.VTTRegistrationMessage.push(function registerEndpoint
           receiver: false
         })))
   } else {
-    // announce controller status
+    console.log("[%d] announce new controller to receivers", moment().valueOf())
     connectionRegistry.getReceiverConnections()
         .forEach(conn => conn.send(JSON.stringify({
           type: "registration",
@@ -40,7 +40,11 @@ messageDispatcher.handlers.VTTRegistrationMessage.push(function registerEndpoint
 messageDispatcher.handlers.VTTConfigurationMessage.push(function configureEndpoint(connection, message) {
   connectionRegistry.getControllerConnections()
       .filter(conn => conn.controllerId == message['controller-id'])
-      .forEach(conn => conn.send(JSON.stringify(message)))
+      .forEach(conn => {
+        const data = JSON.stringify(message)
+        console.log('[%d] sending config %s to: %s', moment().valueOf(), data, conn.controllerId)
+        conn.send(data)
+      })
 })
 
 const server = https.createServer({
@@ -65,9 +69,13 @@ wss.on('connection', function connection(ws) {
 
   ws.on('message', function incoming(message) {
     console.debug('[%d] received: %s', moment().valueOf(), message)
-    const data = JSON.parse(message)
-    console.dir(data)
-    messageDispatcher.dispatch(this, data)
+    try {
+      const data = JSON.parse(message)
+      console.dir(data)
+      messageDispatcher.dispatch(this, data)
+    } catch(ex) {
+      console.error('[%d] unable to handle message: %s', moment().valueOf(), ex)
+    }
   })
 })
 
