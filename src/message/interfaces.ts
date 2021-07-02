@@ -9,8 +9,13 @@ export interface RGBColor {
   b: RGBColorValue
 }
 
+export interface VTTPlayer {
+  id: string
+  name: string
+}
+
 export interface VTTMessage {
-  type: "key-event" | "registration" | "configuration"
+  type: "key-event" | "registration" | "configuration" | 'keyboard-login'
 }
 
 export interface VTTKeyEventMessage extends VTTMessage {
@@ -25,6 +30,7 @@ export interface VTTRegistrationMessage extends VTTMessage {
   "controller-id": string | undefined
   status: "connected" | "disconnected"
   receiver: boolean
+  players: VTTPlayer[] | undefined
 }
 
 export interface VTTConfigurationMessage extends VTTMessage {
@@ -32,4 +38,10 @@ export interface VTTConfigurationMessage extends VTTMessage {
   "controller-id": string
   led1: RGBColor
   led2: RGBColor
+}
+
+export interface VTTKeyboardLoginMessage extends VTTMessage {
+  type: "keyboard-login"
+  "controller-id": string
+  "player-id": string
 }
