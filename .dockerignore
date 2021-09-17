@@ -1,0 +1,6 @@
+# Ignore unrelated stuff
+.git/*
+.vscode/*
+.gitignore
+LICENSE
+README.md
