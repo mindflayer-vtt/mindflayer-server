@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>VTT Keyboard Registration</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://unpkg.com/purecss@2.0.5/build/pure-min.css">
+  <script src="https://kit.fontawesome.com/a2467c72a1.js" crossorigin="anonymous"></script>
+  <style>
+      body {
+          background: #1f8dd6;
+      }
+
+      .home-menu {
+          padding: 0.5em;
+          text-align: center;
+          box-shadow: 0 1px 1px rgba(0, 0, 0, 0.10);
+      }
+
+      .home-menu {
+          background: #2d3e50;
+      }
+
+      .pure-menu.pure-menu-fixed {
+          /* Fixed menus normally have a border at the bottom. */
+          border-bottom: none;
+          /* I need a higher z-index here because of the scroll-over effect. */
+          z-index: 4;
+      }
+
+      .home-menu .pure-menu-heading {
+          color: white;
+          font-weight: 400;
+          font-size: 120%;
+      }
+
+      .home-menu .pure-menu-selected a {
+          color: white;
+      }
+
+      .home-menu .pure-menu-item {
+          color: white;
+      }
+
+      .home-menu a {
+          color: #6FBEF3;
+      }
+
+      .home-menu li a:hover,
+      .home-menu li a:focus {
+          background: none;
+          border: none;
+          color: #AECFE5;
+      }
+
+
+      .fa.fa-arrow-up.left {
+          transform: rotate(-45deg);
+          text-align-last: left;
+      }
+
+      .fa.fa-arrow-up.right {
+          transform: rotate(45deg);
+          text-align-last: left;
+      }
+
+      .fa.fa-arrow-down.left {
+          transform: rotate(45deg);
+          text-align-last: left;
+      }
+
+      .fa.fa-arrow-down.right {
+          transform: rotate(-45deg);
+          text-align-last: left;
+      }
+
+      .login, .keypad, .leds {
+          max-width: 500px;
+          margin: 0 auto;
+      }
+
+      .login {
+        background-color: #efefef;
+        padding: 1em
+      }
+
+      .content {
+          margin: 200px 0 0 0;
+      }
+
+      .led {
+          background-color: darkslategray;
+          text-align: center;
+          height: 50px;
+          line-height: 50px;
+      }
+
+      #connection-icon.active {
+          color: #20ff90;
+      }
+
+      #connection-icon.disconnected {
+          color: #ff5420;
+      }
+
+      #thank-you, #player-registration__error {
+        display: none;
+      }
+  </style>
+</head>
+
+<body>
+  <div class="header">
+      <div class="home-menu pure-menu pure-menu-horizontal pure-menu-fixed">
+          <a class="pure-menu-heading" href="">VTT Registration</a>
+      </div>
+  </div>
+  <div class="content">
+    <div class="pure-g login">
+      <div class="pure-u-1">
+        <div id="thank-you">
+          <h2>Success</h2>
+          <p>You are now logged in, happy gaming!</p>
+        </div>
+        <form id="player-registration" class="pure-form pure-form-aligned">
+          <fieldset>
+            <legend>Who are you?</legend>
+            <p id="player-registration__error">An Error occured :-(</p>
+            <div class="pure-control-group">
+              <label for="player_controller-id">Controller ID</label>
+              <input type="text" id="player_controller-id" name="controller-id" readonly placeholder="loading..."/>
+            </div>
+            <div class="pure-control-group">
+              <label for="player_player-id">Your Name</label>
+              <select id="player_player-id" name="player-id"></select>
+            </div>
+            <div class="pure-control-group">
+              <label></label>
+              <button type="submit" class="pure-button pure-button-primary">Connect</button>
+            </div>
+          </fieldset>
+        </form>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const registrationForm = document.getElementById('player-registration')
+
+      registrationForm.onsubmit = async function(evt) {
+        evt.preventDefault()
+
+        window.localStorage.setItem('vtt-player-id', document.getElementById('player_player-id').value)
+        
+        fetch('/api/players/register', {
+          method: 'POST',
+          cache: 'no-cache',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            'controller-id': document.getElementById('player_controller-id').value,
+            'player-id': document.getElementById('player_player-id').value
+          })
+        })
+          .then(() => {
+            registrationForm.style.display = 'none'
+            document.getElementById('thank-you').style.display = 'block'
+          })
+          .catch(() => {
+            document.getElementById('player-registration__error').style.display = 'block'
+          })
+      }
+
+      const url = new URL(window.location.href)
+      console.dir(url)
+      if(!url.searchParams.get('ctl')) {
+        window.alert('Use the QR Codes please!')
+        //window.location.href = '/'
+        return
+      }
+      document.getElementById('player_controller-id').value = url.searchParams.get('ctl')
+
+      fetch('/api/players')
+        .then((res) => res.json())
+        .then((players) => {
+          const playerSelect = document.getElementById('player_player-id')
+          const playerIdPreSelect = window.localStorage.getItem('vtt-player-id')
+          players.forEach(player => {
+            const opt = document.createElement('option')
+            opt.value = player.id
+            opt.innerText = player.name
+            if(player.id === playerIdPreSelect) {
+              opt.selected = 'selected'
+            }
+            playerSelect.appendChild(opt)
+          })
+        })
+    })()
+  </script>
+</body>
+</html>

@@ -1,0 +1,383 @@
+<html lang="en">
+
+<head>
+    <title>VTT Keyboard Prototype</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://unpkg.com/purecss@2.0.5/build/pure-min.css">
+    <script src="https://kit.fontawesome.com/a2467c72a1.js" crossorigin="anonymous"></script>
+    <style>
+        body {
+            background: #1f8dd6;
+        }
+
+        .home-menu {
+            padding: 0.5em;
+            text-align: center;
+            box-shadow: 0 1px 1px rgba(0, 0, 0, 0.10);
+        }
+
+        .home-menu {
+            background: #2d3e50;
+        }
+
+        .pure-menu.pure-menu-fixed {
+            /* Fixed menus normally have a border at the bottom. */
+            border-bottom: none;
+            /* I need a higher z-index here because of the scroll-over effect. */
+            z-index: 4;
+        }
+
+        .home-menu .pure-menu-heading {
+            color: white;
+            font-weight: 400;
+            font-size: 120%;
+        }
+
+        .home-menu .pure-menu-selected a {
+            color: white;
+        }
+
+        .home-menu .pure-menu-item {
+            color: white;
+        }
+
+        .home-menu a {
+            color: #6FBEF3;
+        }
+
+        .home-menu li a:hover,
+        .home-menu li a:focus {
+            background: none;
+            border: none;
+            color: #AECFE5;
+        }
+
+
+        .fa.fa-arrow-up.left {
+            transform: rotate(-45deg);
+            text-align-last: left;
+        }
+
+        .fa.fa-arrow-up.right {
+            transform: rotate(45deg);
+            text-align-last: left;
+        }
+
+        .fa.fa-arrow-down.left {
+            transform: rotate(45deg);
+            text-align-last: left;
+        }
+
+        .fa.fa-arrow-down.right {
+            transform: rotate(-45deg);
+            text-align-last: left;
+        }
+
+        .pure-button {
+            font-size: 3em;
+            width: 100%;
+        }
+
+        .keypad, .leds {
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .content {
+            margin: 200px 0 0 0;
+        }
+
+        .led {
+            background-color: darkslategray;
+            text-align: center;
+            height: 50px;
+            line-height: 50px;
+        }
+
+        #connection-icon.active {
+            color: #20ff90;
+        }
+
+        #connection-icon.disconnected {
+            color: #ff5420;
+        }
+
+        @media (max-width: 78em) {
+            .home-menu .pure-menu-heading {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <div class="home-menu pure-menu pure-menu-horizontal pure-menu-fixed">
+            <a class="pure-menu-heading" href="">VTT Keypad</a>
+
+            <ul class="pure-menu-list">
+                <li class="pure-menu-item"><span>Connection: <i id="connection-icon" class="fa fa-wifi"></i></span><a href="#" class="pure-menu-link" id="setup"><span
+                            id="connection"></span></a></li>
+            </ul>
+        </div>
+    </div>
+    <div class="content">
+        <div class="pure-g leds">
+            <div class="pure-u-1 pure-u-md-1-2">
+                <div class="pure-g">
+                    <div class="pure-u-1-2 led" id="led1">
+                        LED 1
+                    </div>
+                    <div class="pure-u-1-2 led" id="led2">
+                        LED 2
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="pure-g keypad">
+            <div class="pure-u-1 pure-u-md-1-3">
+            </div>
+            <div class="pure-u-1 pure-u-md-1-3">
+                <div class="pure-g">
+                    <div class="pure-u-1-3">
+                        <button data-key="W,A" class="key pure-button pure-button-active">
+                            <i class="fa fa-arrow-up left"></i>
+                        </button>
+                    </div>
+                    <div class="pure-u-1-3">
+                        <button data-key="W" class="key pure-button pure-button-active">
+                            <i class="fa fa-arrow-up"></i>
+                        </button>
+                    </div>
+                    <div class="pure-u-1-3">
+                        <button data-key="W,D" class="key pure-button pure-button-active">
+                            <i class="fa fa-arrow-up right"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="pure-g">
+                    <div class="pure-u-1-3">
+                        <button data-key="A" class="key pure-button pure-button-active">
+                            <i class="fa fa-arrow-left"></i>
+                        </button>
+                    </div>
+                    <div class="pure-u-1-3">
+                        <button data-key="Q" class="special key pure-button pure-button-active">
+                            <i class="fa fa-object-group"></i>
+                        </button>
+                    </div>
+                    <div class="pure-u-1-3">
+                        <button data-key="D" class="key pure-button pure-button-active">
+                            <i class="fa fa-arrow-right"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="pure-g">
+                    <div class="pure-u-1-3">
+                        <button data-key="A,S" class="key pure-button pure-button-active">
+                            <i class="fa fa-arrow-down left"></i>
+                        </button>
+                    </div>
+                    <div class="pure-u-1-3">
+                        <button data-key="S" class="key pure-button pure-button-active">
+                            <i class="fa fa-arrow-down"></i>
+                        </button>
+                    </div>
+                    <div class="pure-u-1-3">
+                        <button data-key="S,D" class="key pure-button pure-button-active">
+                            <i class="fa fa-arrow-down right"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="pure-g">
+                    <div class="pure-u-1-3">
+                        <button data-key="E" class="key pure-button pure-button-active">
+                            <i class="fa fa-fire-alt"></i>
+                        </button>
+                    </div>
+                    <div class="pure-u-1-3">
+                        <button data-key="SPC" class="key pure-button pure-button-active">
+                            <i class="fa fa-hand-paper"></i>
+                        </button>
+                    </div>
+                    <div class="pure-u-1-3">
+                        <button data-key="SHI" data-modifier="false" id="modifier" class="pure-button pure-button-active">
+                            <i class="fa fa-sync-alt"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="pure-u-1 pure-u-md-1-3">
+            </div>
+        </div>
+    </div>
+    <script>
+        /**
+         * Initialize keypad
+         */
+        (function () {
+            const LOG_PREFIX = 'VTT Token Controller | '
+            const localStorage = window.localStorage
+
+            let host = localStorage.getItem('vtt-keypad.host') || 'localhost'
+            let port = localStorage.getItem('vtt-keypad.port') || '443'
+            let path = localStorage.getItem('vtt-keypad.path') || '/ws/vtt'
+            let controllerId = localStorage.getItem('vtt-keypad.controllerId') || 'test'
+
+            let socket
+
+            function setupHost() {
+                localStorage.clear()
+                host = prompt('Hostname', host) || host
+                localStorage.setItem('vtt-keypad.host', host)
+
+                port = prompt('Port', port) || port
+                localStorage.setItem('vtt-keypad.port', port)
+
+                path = prompt('Path', path) || path
+                localStorage.setItem('vtt-keypad.path', path)
+
+                controllerId = prompt('ID', controllerId) || controllerId
+                localStorage.setItem('vtt-keypad.controllerId', controllerId)
+
+                if (socket) {
+                    console.warn(LOG_PREFIX + 'Resetting websocket connection...')
+                    socket.close(1000)
+                }
+                
+                init()
+            }
+
+            function rgbToHex (rgb) { 
+                var hex = Number(rgb).toString(16);
+                if (hex.length < 2) {
+                    hex = "0" + hex;
+                }
+                return hex;
+            };
+
+            function colorToHex(value) {
+                let result = '#'
+                result += rgbToHex(value.r % 256)
+                result += rgbToHex(value.g % 256)
+                result += rgbToHex(value.b % 256)
+                return result
+            }
+
+            function init() {
+                socket = new WebSocket('wss://' + host + ':' + port + path)
+
+                socket.onopen = function (data) {
+                    console.log(LOG_PREFIX + 'Connected to websocket: ', data)
+                    document.getElementById('connection-icon').classList.remove('disconnected')
+                    document.getElementById('connection-icon').classList.add('active')
+
+                    let message = {
+                        type: "registration",
+                        "controller-id": controllerId,
+                        "status": "connected",
+                        "receiver": false
+                    }
+                    socket.send(JSON.stringify(message))
+                }
+
+                socket.onmessage = function onMessage(data) {
+                    console.log(LOG_PREFIX + 'received message: ', data)
+                    const message = JSON.parse(data.data)
+
+                    if(message instanceof Object && message.hasOwnProperty('type')) {
+                        if(message.type === 'configuration' && message['controller-id'] === controllerId) {
+                            console.log(LOG_PREFIX + "setting LED colors");
+                            document.getElementById('led1').style.backgroundColor = colorToHex(message.led1)
+                            document.getElementById('led2').style.backgroundColor = colorToHex(message.led2)
+                        }
+                    }
+                }
+
+                socket.onclose = function (e) {
+                    document.getElementById('connection-icon').classList.remove('active')
+                    document.getElementById('connection-icon').classList.add('disconnected')
+                    if (e.code != 1000) {
+                        console.warn(LOG_PREFIX + 'Websocket connection closed, attempting to reconnect in 5 seconds...', e)
+                        setTimeout(function () {
+                            init()
+                        }, 5000)
+                    }
+                }
+
+                socket.onerror = function (error) {
+                    document.getElementById('connection-icon').classList.remove('active')
+                    document.getElementById('connection-icon').classList.add('disconnected')
+                    console.error(LOG_PREFIX + 'Error: ', error)
+                    socket.close()
+                }
+
+                document.getElementById("connection").innerText = `${controllerId}@wss://${host}:${port}${path}`
+            }
+
+            function keyMessage(key, state) {
+                let message = {
+                    "type": "key-event",
+                    "controller-id": controllerId,
+                    "key": key,
+                    "state": state
+                }
+                return JSON.stringify(message)
+            }
+
+            function sendKeyDown(keys) {
+                Array.from(keys).forEach(function (key) {
+                    const message = keyMessage(key, "down")
+                    console.log(LOG_PREFIX + 'Sending message: ', message)
+                    socket.send(message)
+                })
+                this.dataset.isDown = true
+            }
+
+            function sendKeyUp(keys) {
+                Array.from(keys).forEach(function (key) {
+                    const message = keyMessage(key, "up")
+                    console.log(LOG_PREFIX + 'Sending message: ', message)
+                    socket.send(message)
+                })
+                this.dataset.isDown = false
+            }
+
+            function toggleModifier(event) {
+                if (this.classList.contains("pure-button-primary")) {
+                    this.classList.remove("pure-button-primary");
+                    sendKeyUp.call(this, [this.dataset.key])
+                    this.dataset.modifier = false
+                } else {
+                    this.classList.add("pure-button-primary");
+                    sendKeyDown.call(this, [this.dataset.key])
+                    this.dataset.modifier = true
+                }
+            }
+
+            function bind() {
+                var directions = document.getElementsByClassName('key');
+
+                Array.from(directions).forEach(function (direction) {
+                    const keys = direction.dataset.key.split(',')
+                    console.log(LOG_PREFIX + 'Binding button: ', direction, keys)
+                    direction.addEventListener('mousedown', sendKeyDown.bind(direction, keys))
+                    direction.addEventListener('mouseup', sendKeyUp.bind(direction, keys))
+                    direction.addEventListener('touchstart', sendKeyDown.bind(direction, keys))
+                    direction.addEventListener('touchend', sendKeyUp.bind(direction, keys))
+                });
+
+                var modifier = document.getElementById('modifier')
+                modifier.addEventListener('click', toggleModifier)
+
+                var setup = document.getElementById('setup')
+                setup.addEventListener('click', setupHost)
+            }
+
+            bind()
+            init()
+        })()
+    </script>
+</body>
+
+</html>
