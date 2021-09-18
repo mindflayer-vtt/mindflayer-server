@@ -1,3 +1,7 @@
+<div align="center">
+<img width="460" src="https://raw.githubusercontent.com/shawly/mindflayer-server/main/.github/foundryvtt-mindflayer-logo.png">
+</div>
+
 # Mind Flayer - WebSocket Server
 [![Docker Automated build](https://img.shields.io/badge/docker%20build-automated-brightgreen)](https://github.com/shawly/mindflayer-server/actions) [![GitHub Workflow Status](https://img.shields.io/github/workflow/status/shawly/mindflayer-server/Docker)](https://github.com/shawly/mindflayer-server/actions) [![Docker Pulls](https://img.shields.io/docker/pulls/shawly/mindflayer-server)](https://hub.docker.com/r/shawly/mindflayer-server) [![Docker Image Size (tag)](https://img.shields.io/docker/image-size/shawly/mindflayer-server/latest)](https://hub.docker.com/r/shawly/mindflayer-server) [![GitHub Release](https://img.shields.io/github/release/shawly/mindflayer-server.svg)](https://github.com/shawly/mindflayer-server/releases/latest)
 
