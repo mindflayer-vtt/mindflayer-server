@@ -23,7 +23,7 @@ FROM node:${NODE_VERSION} as node-arm64v8
 FROM node:${NODE_VERSION} as node-ppc64le
 
 # Use Node 14 base image
-FROM node-${TARGETARCH:-amd64}${TARGETVARIANT}:${NODE_VERSION}
+FROM node-${TARGETARCH:-amd64}${TARGETVARIANT}
 
 # Run in production mode
 ENV NODE_ENV=production
