@@ -5,10 +5,10 @@
 #
 
 # Add some build args
-ARG BASE_IMAGE=14-alpine
+ARG NODE_VERSION=14-alpine
 
 # Use Node 14 base image
-FROM ${TARGETARCH:-amd64}${TARGETVARIANT}/node:${BASE_IMAGE}
+FROM node-${TARGETARCH:-amd64}${TARGETVARIANT}:${NODE_VERSION}
 
 # Run in production mode
 ENV NODE_ENV=production
