@@ -55,7 +55,7 @@ messageDispatcher.handlers.VTTConfigurationMessage.push(function configureEndpoi
 
 const app = express()
 
-app.use(express.static('../static'))
+app.use(express.static('./static'))
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 
@@ -77,11 +77,11 @@ app.get('/api/players', (req, res) => {
 })
 
 app.get('/configure', (req, res) => {
-  res.sendFile(path.join(__dirname, '..','static','configure.html'))
+  res.sendFile(path.join(__dirname, '.','static','configure.html'))
 })
 
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '..','static','keypad.html'))
+  res.sendFile(path.join(__dirname, '.','static','keypad.html'))
 })
 
 const server = https.createServer({
