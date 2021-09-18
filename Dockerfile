@@ -18,7 +18,7 @@ FROM node:${NODE_VERSION} as node-armv6
 
 FROM node:${NODE_VERSION} as node-armv7
 
-FROM node:${NODE_VERSION} as node-arm64v8
+FROM node:${NODE_VERSION} as node-arm64
 
 FROM node:${NODE_VERSION} as node-ppc64le
 
