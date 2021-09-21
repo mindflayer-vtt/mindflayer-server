@@ -1,7 +1,7 @@
 #
 # mindflayer-server Dockerfile
 #
-# https://github.com/shawly/mindflayer-server
+# https://github.com/mindflayer-vtt/mindflayer-server
 #
 
 # Add some build args

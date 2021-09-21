@@ -66,7 +66,7 @@ jobs:
     - name: Prepare
       id: prep
       run: |
-        DOCKER_IMAGE=${{ github.repository_owner }}/$IMAGE_NAME
+        DOCKER_IMAGE=mindflayervtt/$IMAGE_NAME
         # Strip git ref prefix from version
         VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
         # Use Docker `edge` tag convention and pr-<number> for pull requests
