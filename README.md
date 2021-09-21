@@ -18,7 +18,7 @@ To get the [Mind Flayer VTT module](https://github.com/mindflayer-vtt/foundryvtt
 You need to install Docker first. Afterwards you can run the server:
 
 ```sh
-docker run -d --restart unless-stopped --name mindflayer-server -p 10443:10443 mindflayer-vtt/server
+docker run -d --restart unless-stopped --name mindflayer-server -p 10443:10443 mindflayervtt/server
 ```
 
 ### Docker Compose
@@ -31,7 +31,7 @@ version: "3"
 services:
   mindflayer-server:
     container_name: mindflayer-server
-    image: mindflayer-vtt/server
+    image: mindflayervtt/server
     ports:
       - 10443:10443/tcp
     restart: unless-stopped
