@@ -14,13 +14,25 @@ FROM node:${NODE_VERSION} as node-386
 
 FROM node:${NODE_VERSION} as node-s390x
 
+# fix for gyp missing python
+RUN apk add --update --no-cache \
+      python3
+
 FROM node:${NODE_VERSION} as node-armv6
 
 FROM node:${NODE_VERSION} as node-armv7
 
 FROM node:${NODE_VERSION} as node-arm64
 
+# fix for gyp missing python
+RUN apk add --update --no-cache \
+      python3
+
 FROM node:${NODE_VERSION} as node-ppc64le
+
+# fix for gyp missing python
+RUN apk add --update --no-cache \
+      python3
 
 # Use Node 14 base image
 FROM node-${TARGETARCH:-amd64}${TARGETVARIANT}
@@ -35,7 +47,11 @@ WORKDIR /app
 ADD . /app
 
 # Install the server dependencies
-RUN npm install --production
+RUN \
+  apk add --update --no-cache \
+    python3 \
+    git && \
+  npm install --production
 
 # Expose the node server port
 EXPOSE 10443
