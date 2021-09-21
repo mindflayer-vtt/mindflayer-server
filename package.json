@@ -1,7 +1,7 @@
 {
-  "name": "vtt-websocket-token-controller-server",
-  "version": "0.1.0",
-  "description": "A lightweight websocket server for relaying messages from the mobile keyboards to vtt",
+  "name": "mindflayer-server",
+  "version": "0.1.1",
+  "description": "A lightweight websocket server for relaying messages to the Mind Flayer VTT module",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -16,5 +16,6 @@
   "optionalDependencies": {
     "bufferutil": "^4.0.3",
     "utf-8-validate": "^5.0.4"
-  }
+  },
+  "repository": "github:mindflayer-vtt/mindflayer-server"
 }

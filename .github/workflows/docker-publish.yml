@@ -14,7 +14,7 @@ on:
   pull_request:
 
 env:
-  IMAGE_NAME: mindflayer-server
+  IMAGE_NAME: mindflayervtt/server
   IMAGE_TITLE: Mind Flayer WebSocket Server
   IMAGE_DESCRIPTION: WebSocket Server for Mind Flayer Foundry VTT module
   APP_VERSION: 1.0
@@ -66,7 +66,7 @@ jobs:
     - name: Prepare
       id: prep
       run: |
-        DOCKER_IMAGE=mindflayervtt/$IMAGE_NAME
+        DOCKER_IMAGE=$IMAGE_NAME
         # Strip git ref prefix from version
         VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
         # Use Docker `edge` tag convention and pr-<number> for pull requests
