@@ -4,9 +4,9 @@ const WebSocket = require('ws')
 const url = require('url')
 const path = require('path')
 const express = require('express')
-const moment = require('moment')
-const connectionRegistry = require('./src/connection/registry')
-const messageDispatcher = require('./src/message/dispatcher')
+const log = require('./config/logger')
+const connectionRegistry = require('./connection/registry')
+const messageDispatcher = require('./message/dispatcher')
 
 // configuration
 const PORT = 10443
@@ -23,7 +23,7 @@ messageDispatcher.handlers.VTTRegistrationMessage.push(function registerEndpoint
   newConnection.controllerId = message['controller-id']
   if(newConnection.receiver) {
     newConnection.players = message.players || []
-    console.log("[%d] announce all known controllers to new receiver", moment().valueOf())
+    log.debug("announce all known controllers to new receiver")
     connectionRegistry.getControllerConnections()
         .forEach(conn => newConnection.send(JSON.stringify({
           type: "registration",
@@ -32,7 +32,7 @@ messageDispatcher.handlers.VTTRegistrationMessage.push(function registerEndpoint
           receiver: false
         })))
   } else {
-    console.log("[%d] announce new controller to receivers", moment().valueOf())
+    log.debug("announce new controller to receivers")
     connectionRegistry.getReceiverConnections()
         .forEach(conn => conn.send(JSON.stringify({
           type: "registration",
@@ -48,14 +48,16 @@ messageDispatcher.handlers.VTTConfigurationMessage.push(function configureEndpoi
       .filter(conn => conn.controllerId == message['controller-id'])
       .forEach(conn => {
         const data = JSON.stringify(message)
-        console.log('[%d] sending config %s to: %s', moment().valueOf(), data, conn.controllerId)
+        log.debug('sending config "' + data + '" to: "' + conn.controllerId + '"')
         conn.send(data)
       })
 })
 
+messageDispatcher.handlers.VTTAmbilightMessage.push(require('./handlers/ambilight'))
+
 const app = express()
 
-app.use(express.static('./static'))
+app.use(express.static('./../static'))
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 
@@ -66,7 +68,7 @@ app.post('/api/players/register', (req, res) => {
     'controller-id': req.body['controller-id'],
     'player-id': req.body['player-id']
   })
-  console.log('[%d] sending "%s" to all receivers', moment().valueOf(), data)
+  log.debug('sending "' + data + '" to all receivers')
   connectionRegistry.getReceiverConnections().forEach(conn => {
     conn.send(data)
   })
@@ -77,11 +79,11 @@ app.get('/api/players', (req, res) => {
 })
 
 app.get('/configure', (req, res) => {
-  res.sendFile(path.join(__dirname, '.','static','configure.html'))
+  res.sendFile(path.join(__dirname, '..','static','configure.html'))
 })
 
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '.','static','keypad.html'))
+  res.sendFile(path.join(__dirname, '..','static','keypad.html'))
 })
 
 const server = https.createServer({
@@ -95,13 +97,13 @@ wss.on('connection', function connection(ws) {
   connectionRegistry.addConnection(ws)
 
   ws.on('message', function incoming(message) {
-    console.debug('[%d] received: %s', moment().valueOf(), message)
+    log.trace('received: %s', message)
     try {
       const data = JSON.parse(message)
-      console.dir(data)
       messageDispatcher.dispatch(this, data)
     } catch(ex) {
-      console.error('[%d] unable to handle message: %s', moment().valueOf(), ex)
+      log.error('unable to handle message:')
+      log.debug(ex)
     }
   })
 })
@@ -123,5 +125,5 @@ server.on('upgrade', function upgrade(request, socket, head) {
 })
 
 server.listen(PORT, () => {
-  console.log('[%d] Now listening on Port %d', moment().valueOf(), PORT)
+  log.info('Now listening on Port ' + PORT)
 })
