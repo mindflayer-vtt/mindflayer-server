@@ -1,29 +1,35 @@
+const log = require('../config/logger')
 
 const handlers = {
   VTTMessage: [VTTMessageHandler],
   VTTKeyEventMessage: [],
   VTTRegistrationMessage: [],
-  VTTConfigurationMessage: []
+  VTTConfigurationMessage: [],
+  VTTAmbilightMessage: []
 }
 
 function VTTMessageHandler(origin, message) {
   if(!message || !message.hasOwnProperty("type")) {
-    console.warn("Could not handle message:", message)
+    log.info("Message does not have a type:" + message)
   } else {
     let selected = []
     switch(message.type) {
       case "key-event":
         selected = handlers.VTTKeyEventMessage
-        break;
+        break
       case "registration":
         selected = handlers.VTTRegistrationMessage
-        break;
+        break
       case "configuration":
         selected = handlers.VTTConfigurationMessage
-        break;
+        break
+      case "ambilight":
+        selected = handlers.VTTAmbilightMessage
+        break
       default:
-        console.warn("Unknown Message Type: ", message)
-        break;
+        log.warn("Unknown Message Type: " + message.type)
+        log.debug(message)
+        break
     }
     selected.forEach(handler => handler(origin, message))
   }
