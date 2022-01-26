@@ -12,10 +12,10 @@ function validate(message) {
   if(typeof message != typeof {}) {
     return false
   } else if (!message.hasOwnProperty('colors') || !Array.isArray(message.colors) || message.colors.length <= 0) {
-    log.error("Ambilight message 'colors' attribute missing or missformatted.")
+    log.error("Ambilight message 'colors' attribute missing or misformatted.")
     return false
   } else if (!message.hasOwnProperty('universe') || message.universe < 0x01 || message.universe > 0xff) {
-    log.error("Ambilight message 'universe' attribute missing or missformatted.")
+    log.error("Ambilight message 'universe' attribute missing or misformatted.")
     return false
   } else if (!message.hasOwnProperty('target')) {
     log.error("Ambilight message 'target' attribute missing.")
