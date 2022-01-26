@@ -1,4 +1,5 @@
 const moment = require('moment')
+const log = require('../config/logger')
 
 const HEALTHCHECK_TIME = 30
 
@@ -37,7 +38,7 @@ function addConnection(connection) {
     connection.on('pong', heartbeat.bind(connection, connection))
 
     connection.on('close', function() {
-      console.debug('client disconnected')
+      log.debug('client disconnected')
       removeConnection(connection)
     })
   }
