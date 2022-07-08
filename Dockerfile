@@ -5,7 +5,7 @@
 #
 
 # Add some build args
-ARG NODE_VERSION=14-alpine
+ARG NODE_VERSION=16-alpine
 
 # Set base images (necessary for multi-arch building via GitHub workflows)
 FROM node:${NODE_VERSION} as node-amd64
