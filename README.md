@@ -45,7 +45,7 @@ docker-compose up -d
 
 ### Manual
 
-If you want to run it on your machine without docker, you need to install NodeJS 14. Afterwards check out the repository:
+If you want to run it on your machine without Docker, install Node.js 24 (the version is recorded in `.nvmrc`). Afterwards check out the repository:
 
 ```sh
 git clone https://github.com/mindflayer-vtt/mindflayer-server
@@ -54,10 +54,10 @@ git clone https://github.com/mindflayer-vtt/mindflayer-server
 Install dependencies
 
 ```sh
-npm install --production
+npm ci --omit=dev
 ```
 
-Run the srver
+Run the server
 
 ```sh
 npm start
