@@ -5,6 +5,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const WebSocket = require('ws')
+const cbor = require('cbor')
 const { once } = require('events')
 const { createDeviceServer } = require('../src')
 const { calculateHmac, authInput } = require('../src/security/device-auth')
@@ -12,11 +13,12 @@ const { ensureDeviceTls } = require('../src/security/device-tls')
 const { DeviceStore } = require('../src/security/device-store')
 const { FirmwareRepository } = require('../src/firmware/repository')
 const { OtaTokens } = require('../src/firmware/tokens')
+const { TYPE } = require('../src/device/protocol')
 
-function json(ws) { return new Promise((resolve, reject) => ws.once('message', data => { try { resolve(JSON.parse(data)) } catch (error) { reject(error) } })) }
+function message(ws) { return new Promise((resolve, reject) => ws.once('message', (data, isBinary) => { try { assert.equal(isBinary, true); resolve(cbor.decodeFirstSync(data, { required: true })) } catch (error) { reject(error) } })) }
 async function open(runtime) {
   runtime.server.listen(0, '127.0.0.1'); await once(runtime.server, 'listening')
-  const ws = new WebSocket(`wss://127.0.0.1:${runtime.server.address().port}/ws`, { rejectUnauthorized: false })
+  const ws = new WebSocket(`wss://127.0.0.1:${runtime.server.address().port}/device/v1`, { rejectUnauthorized: false })
   await once(ws, 'open'); return ws
 }
 function fixture() {
@@ -32,10 +34,10 @@ function close(runtime, ws) { if (ws) ws.terminate(); for (const client of runti
 
 async function authenticate(runtime, id = 'controller1', secret = '11'.repeat(32)) {
   const ws = await open(runtime)
-  const challenge = await json(ws)
-  ws.send(JSON.stringify({ type: 'auth-response', 'device-id': id, hmac: calculateHmac(Buffer.from(secret, 'hex'), id, challenge.challenge) }))
-  const accepted = await json(ws)
-  assert.equal(accepted.type, 'auth-ok')
+  const challenge = await message(ws)
+  ws.send(cbor.encodeCanonical([TYPE.AUTH_RESPONSE, id, Buffer.from(calculateHmac(Buffer.from(secret, 'hex'), id, challenge[2]), 'hex')]))
+  const accepted = await message(ws)
+  assert.deepEqual(accepted, [TYPE.AUTH_RESULT, 0, id])
   return { ws, challenge }
 }
 
@@ -65,12 +67,12 @@ test('repairs a missing certificate without replacing the TLS private key and re
 test('device endpoint is TLS and each connection receives a fresh challenge', async () => {
   const f = fixture(); const runtime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') })
   runtime.server.listen(0, '127.0.0.1'); await once(runtime.server, 'listening')
-  const url = `wss://127.0.0.1:${runtime.server.address().port}/ws`
-  const first = new WebSocket(url, { rejectUnauthorized: false }); await once(first, 'open'); const a = await json(first)
-  const second = new WebSocket(url, { rejectUnauthorized: false }); await once(second, 'open'); const b = await json(second)
+  const url = `wss://127.0.0.1:${runtime.server.address().port}/device/v1`
+  const first = new WebSocket(url, { rejectUnauthorized: false }); await once(first, 'open'); const a = await message(first)
+  const second = new WebSocket(url, { rejectUnauthorized: false }); await once(second, 'open'); const b = await message(second)
   try {
-    assert.equal(a.type, 'auth-challenge'); assert.equal(a.version, 1)
-    assert.equal(b.type, 'auth-challenge'); assert.notEqual(a.challenge, b.challenge)
+    assert.equal(a[0], TYPE.AUTH_CHALLENGE); assert.equal(a[1], 1); assert.equal(a[2].length, 32)
+    assert.equal(b[0], TYPE.AUTH_CHALLENGE); assert.notDeepEqual(a[2], b[2])
   } finally { first.terminate(); second.terminate(); close(runtime) }
 })
 
@@ -78,14 +80,14 @@ test('authenticates a device, reports metadata, offers exact targeted firmware, 
   const f = fixture(); const runtime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') })
   const ws = await open(runtime)
   try {
-    const challenge = await json(ws)
-    ws.send(JSON.stringify({ type: 'auth-response', 'device-id': 'controller1', hmac: calculateHmac(Buffer.from('11'.repeat(32), 'hex'), 'controller1', challenge.challenge) }))
-    assert.equal((await json(ws)).type, 'auth-ok')
-    ws.send(JSON.stringify({ type: 'registration', 'controller-id': 'controller1', status: 'connected', receiver: false, firmware: '1.1.0', hardware: 'mindflayer-keypad-v1' }))
-    const offer = await json(ws); assert.equal(offer.type, 'update-available'); assert.equal(offer.version, '1.2.0')
+    const challenge = await message(ws)
+    ws.send(cbor.encodeCanonical([TYPE.AUTH_RESPONSE, 'controller1', Buffer.from(calculateHmac(Buffer.from('11'.repeat(32), 'hex'), 'controller1', challenge[2]), 'hex')]))
+    assert.deepEqual(await message(ws), [TYPE.AUTH_RESULT, 0, 'controller1'])
+    ws.send(cbor.encodeCanonical([TYPE.REGISTRATION, '1.1.0', 'mindflayer-keypad-v1']))
+    const offer = await message(ws); assert.equal(offer[0], TYPE.UPDATE_AVAILABLE); assert.equal(offer[1], '1.2.0')
     const base = `https://127.0.0.1:${runtime.server.address().port}`
-    assert.equal((await httpsGet(base + offer.url)).status, 401)
-    const response = await httpsGet(base + offer.url, { Authorization: `Bearer ${offer.token}` })
+    assert.equal((await httpsGet(base + offer[4])).status, 401)
+    const response = await httpsGet(base + offer[4], { Authorization: `Bearer ${Buffer.from(offer[5]).toString('base64url')}` })
     assert.equal(response.status, 200); assert.deepEqual(response.body, f.bytes)
   } finally { close(runtime, ws) }
 })
@@ -104,26 +106,29 @@ test('rollout selection emits no grant for no target, current target, wrong hard
     fs.writeFileSync(f.devicesFile, JSON.stringify(state))
     const runtime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') })
     const { ws } = await authenticate(runtime)
-    ws.send(JSON.stringify({ type: 'registration', 'controller-id': 'controller1', status: 'connected', receiver: false, firmware: item.current, hardware: item.hardware }))
+    ws.send(cbor.encodeCanonical([TYPE.REGISTRATION, item.current, item.hardware]))
     await new Promise(resolve => setImmediate(resolve))
     assert.equal(runtime.tokens.tokens.size, 0)
     close(runtime, ws)
   }
 })
 
-test('rejects invalid, unknown, replayed, unauthenticated, and identity-changing clients', { timeout: 10000 }, async () => {
+test('rejects invalid, unknown, replayed, and unauthenticated device frames', { timeout: 10000 }, async () => {
   const f = fixture()
   for (const response of [
-    challenge => ({ type: 'auth-response', 'device-id': 'controller1', hmac: '00'.repeat(32) }),
-    challenge => ({ type: 'auth-response', 'device-id': 'unknown', hmac: '00'.repeat(32) }),
-    () => ({ type: 'registration', 'controller-id': 'controller1', receiver: false })
+    () => [TYPE.AUTH_RESPONSE, 'controller1', Buffer.alloc(32)],
+    () => [TYPE.AUTH_RESPONSE, 'unknown', Buffer.alloc(32)],
+    () => [TYPE.REGISTRATION, '1.0.0', 'mindflayer-keypad-v1']
   ]) {
     const runtime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') }); const ws = await open(runtime)
-    const challenge = await json(ws); ws.send(JSON.stringify(response(challenge))); await once(ws, 'close'); close(runtime)
+    const challenge = await message(ws); ws.send(cbor.encodeCanonical(response(challenge))); await once(ws, 'close'); close(runtime)
   }
-  const runtime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') }); const ws = await open(runtime)
-  const challenge = await json(ws); const auth = { type: 'auth-response', 'device-id': 'controller1', hmac: calculateHmac(Buffer.from('11'.repeat(32), 'hex'), 'controller1', challenge.challenge) }
-  ws.send(JSON.stringify(auth)); await json(ws); ws.send(JSON.stringify({ type: 'registration', 'controller-id': 'controller2', receiver: false })); await once(ws, 'close'); close(runtime)
+  const firstRuntime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') }); const first = await open(firstRuntime)
+  const oldChallenge = await message(first)
+  const replay = [TYPE.AUTH_RESPONSE, 'controller1', Buffer.from(calculateHmac(Buffer.from('11'.repeat(32), 'hex'), 'controller1', oldChallenge[2]), 'hex')]
+  close(firstRuntime, first)
+  const secondRuntime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') }); const second = await open(secondRuntime)
+  await message(second); second.send(cbor.encodeCanonical(replay)); await once(second, 'close'); close(secondRuntime)
 })
 
 test('validates firmware paths, size, and hashes and expires opaque grants', () => {

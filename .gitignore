@@ -55,5 +55,7 @@ dist
 
 # Persistent local server data and prebuilt firmware
 /data/
+/provisioning/
+*.provisioning.bin
 /firmware/*
 !/firmware/manifest.example.json

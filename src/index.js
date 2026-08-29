@@ -8,7 +8,11 @@ const WebSocket = require('ws')
 const log = require('./config/logger')
 const defaultRegistry = require('./connection/registry')
 const defaultDispatcher = require('./message/dispatcher')
-const { calculateHmac, safeHexEqual } = require('./security/device-auth')
+const { calculateHmacBytes, safeBytesEqual } = require('./security/device-auth')
+const {
+  AUTH_STATUS, MAX_DEVICE_FRAME_SIZE, decodeDeviceFrame, encodeAuthChallenge,
+  encodeAuthResult, encodeConfiguration, encodeUpdateAvailable
+} = require('./device/protocol')
 const { DeviceStore } = require('./security/device-store')
 const { ensureDeviceTls } = require('./security/device-tls')
 const { FirmwareRepository } = require('./firmware/repository')
@@ -49,7 +53,7 @@ function registerProtocolHandlers(registry, dispatcher) {
   })
   dispatcher.handlers.VTTConfigurationMessage.push((connection, message) => {
     registry.getControllerConnections().filter(conn => conn.controllerId === message['controller-id'])
-      .forEach(conn => conn.send(JSON.stringify(message)))
+      .forEach(conn => conn.send(conn.deviceProtocol === 1 ? encodeConfiguration(message) : JSON.stringify(message), conn.deviceProtocol === 1 ? { binary: true } : undefined))
   })
   dispatcher.handlers.VTTAmbilightMessage.push(require('./handlers/ambilight'))
 }
@@ -70,13 +74,13 @@ function createFoundryApp(registry = defaultRegistry) {
   return app
 }
 
-function attachWebSocket(server, onConnection) {
+function attachWebSocket(server, expectedPath, onConnection) {
   const wss = new WebSocket.Server({ noServer: true })
   wss.on('connection', onConnection)
   server.on('upgrade', (request, socket, head) => {
     let pathname
     try { pathname = new URL(request.url, 'http://localhost').pathname } catch { socket.destroy(); return }
-    if (pathname !== '/ws') { socket.destroy(); return }
+    if (pathname !== expectedPath) { socket.destroy(); return }
     wss.handleUpgrade(request, socket, head, ws => wss.emit('connection', ws, request))
   })
   return wss
@@ -88,7 +92,7 @@ function createFoundryServer(options = {}) {
   registerProtocolHandlers(registry, dispatcher)
   const app = createFoundryApp(registry)
   const server = options.tls ? https.createServer(options.tls, app) : http.createServer(app)
-  const wss = attachWebSocket(server, ws => {
+  const wss = attachWebSocket(server, '/ws', ws => {
     registry.addConnection(ws)
     ws.on('message', data => {
       try { dispatcher.dispatch(ws, JSON.parse(data)) } catch (error) { log.warn('Rejected malformed Foundry message'); log.debug(error) }
@@ -119,21 +123,23 @@ function createDeviceServer(options = {}) {
     fs.createReadStream(grant.release.file).pipe(res)
   })
   const server = https.createServer(tls, app)
-  const wss = attachWebSocket(server, ws => {
+  const wss = attachWebSocket(server, '/device/v1', ws => {
+    ws.deviceProtocol = 1
     ws.deviceAuthenticated = false
-    ws.authChallenge = crypto.randomBytes(32).toString('base64url')
-    ws.send(JSON.stringify({ type: 'auth-challenge', version: 1, challenge: ws.authChallenge }))
-    ws.on('message', data => {
+    ws.authChallenge = crypto.randomBytes(32)
+    ws.send(encodeAuthChallenge(ws.authChallenge), { binary: true })
+    ws.on('message', (data, isBinary) => {
       let message
-      try { message = JSON.parse(data) } catch { ws.close(1008, 'malformed message'); return }
+      if (!isBinary || data.length === 0 || data.length > MAX_DEVICE_FRAME_SIZE) { ws.close(1009, 'invalid device frame'); return }
+      try { message = decodeDeviceFrame(data) } catch { ws.close(1008, 'malformed device message'); return }
       if (!ws.deviceAuthenticated) {
-        if (message.type !== 'auth-response' || typeof message['device-id'] !== 'string') { ws.close(1008, 'authentication required'); return }
-        const device = store.get(message['device-id'])
-        const expected = device && calculateHmac(Buffer.from(device.secret, 'hex'), message['device-id'], ws.authChallenge)
+        if (message.type !== 'auth-response') { ws.close(1008, 'authentication required'); return }
+        const device = store.get(message.deviceId)
+        const expected = device && calculateHmacBytes(Buffer.from(device.secret, 'hex'), message.deviceId, ws.authChallenge)
         ws.authChallenge = null
-        if (!expected || !safeHexEqual(message.hmac, expected)) { ws.send(JSON.stringify({ type: 'auth-failed' })); ws.close(1008, 'authentication failed'); return }
+        if (!expected || !safeBytesEqual(message.hmac, expected)) { ws.send(encodeAuthResult(AUTH_STATUS.FAILED), { binary: true }); ws.close(1008, 'authentication failed'); return }
         ws.deviceAuthenticated = true
-        ws.authenticatedDeviceId = message['device-id']
+        ws.authenticatedDeviceId = message.deviceId
         ws.offerUpdate = registration => {
           const { hardware, firmware: current } = registration
           const target = device.targetVersion
@@ -142,13 +148,23 @@ function createDeviceServer(options = {}) {
           if (!release) { log.error(`No valid firmware ${target} for ${hardware}`); return }
           if (!device.allowDowngrade && current && compareVersions(target, current) <= 0) return
           const token = tokens.issue(ws.authenticatedDeviceId, release)
-          ws.send(JSON.stringify({ type: 'update-available', version: release.version, size: release.size, sha256: release.sha256, url: `/firmware/${encodeURIComponent(release.hardware)}/${encodeURIComponent(release.version)}`, token }))
+          const url = `/firmware/${encodeURIComponent(release.hardware)}/${encodeURIComponent(release.version)}`
+          ws.send(encodeUpdateAvailable(release, url, token), { binary: true })
         }
         registry.addConnection(ws)
-        ws.send(JSON.stringify({ type: 'auth-ok', 'device-id': ws.authenticatedDeviceId }))
+        ws.send(encodeAuthResult(AUTH_STATUS.OK, ws.authenticatedDeviceId), { binary: true })
         return
       }
-      try { dispatcher.dispatch(ws, message) } catch (error) { log.warn('Rejected malformed device message'); log.debug(error) }
+      try {
+        if (message.type === 'registration') dispatcher.dispatch(ws, {
+          type: 'registration', 'controller-id': ws.authenticatedDeviceId, status: 'connected', receiver: false,
+          firmware: message.firmware, hardware: message.hardware
+        })
+        else if (message.type === 'key-event') dispatcher.dispatch(ws, {
+          type: 'key-event', 'controller-id': ws.authenticatedDeviceId, key: message.key, state: message.state
+        })
+        else ws.close(1008, 'device message not authorized')
+      } catch (error) { log.warn('Rejected malformed device message'); log.debug(error) }
     })
   })
   wss.on('close', () => registry.close())
