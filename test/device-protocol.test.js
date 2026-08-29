@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const cbor = require('cbor')
 const {
   AUTH_STATUS, MAX_DEVICE_FRAME_SIZE, TYPE, decodeDeviceFrame, encodeAuthChallenge,
-  encodeAuthResult, encodeConfiguration, encodeUpdateAvailable
+  encodeAuthResult, encodeConfiguration, encodeUpdateAvailable, encodeFirmwareAccepted
 } = require('../src/device/protocol')
 
 const fixtures = Object.freeze({
@@ -13,7 +13,8 @@ const fixtures = Object.freeze({
   registration: '830365312e322e33746d696e64666c617965722d6b65797061642d7631',
   keyDown: '83040101',
   configuration: '8705010203040506',
-  updateAvailable: '860665312e322e33187b5820' + '00'.repeat(32) + '712f6669726d776172652f612f312e322e335820' + '33'.repeat(32)
+  updateAvailable: '860665312e322e33187b5820' + '00'.repeat(32) + '712f6669726d776172652f612f312e322e335820' + '33'.repeat(32),
+  firmwareAccepted: '820765312e322e33'
 })
 
 test('server encoders match every canonical device-protocol byte fixture', () => {
@@ -23,6 +24,7 @@ test('server encoders match every canonical device-protocol byte fixture', () =>
   assert.equal(encodeUpdateAvailable(
     { version: '1.2.3', size: 123, sha256: '00'.repeat(32) }, '/firmware/a/1.2.3', Buffer.alloc(32, 0x33).toString('base64url')
   ).toString('hex'), fixtures.updateAvailable)
+  assert.equal(encodeFirmwareAccepted('1.2.3').toString('hex'), fixtures.firmwareAccepted)
 })
 
 test('server decoder maps exact keypad fixtures to typed semantics', () => {

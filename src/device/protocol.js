@@ -8,7 +8,8 @@ const TYPE = Object.freeze({
   REGISTRATION: 3,
   KEY_EVENT: 4,
   CONFIGURATION: 5,
-  UPDATE_AVAILABLE: 6
+  UPDATE_AVAILABLE: 6,
+  FIRMWARE_ACCEPTED: 7
 })
 const AUTH_STATUS = Object.freeze({ OK: 0, FAILED: 1 })
 const ACTION = Object.freeze({ UP: 0, DOWN: 1 })
@@ -68,6 +69,10 @@ function encodeUpdateAvailable(release, url, token) {
     text(url, 191, 'firmware path'),
     bytes(tokenBytes, 32, 'OTA token')
   ])
+}
+
+function encodeFirmwareAccepted(version) {
+  return encode([TYPE.FIRMWARE_ACCEPTED, text(version, 47, 'firmware version')])
 }
 
 function readHead(input, state, expectedMajor) {
@@ -149,5 +154,6 @@ function decodeDeviceFrame(data) {
 
 module.exports = {
   ACTION, AUTH_STATUS, KEYS, MAX_DEVICE_FRAME_SIZE, TYPE,
-  decodeDeviceFrame, encodeAuthChallenge, encodeAuthResult, encodeConfiguration, encodeUpdateAvailable
+  decodeDeviceFrame, encodeAuthChallenge, encodeAuthResult, encodeConfiguration, encodeUpdateAvailable,
+  encodeFirmwareAccepted
 }

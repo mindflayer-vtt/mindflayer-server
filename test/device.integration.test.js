@@ -16,6 +16,7 @@ const { OtaTokens } = require('../src/firmware/tokens')
 const { TYPE } = require('../src/device/protocol')
 
 function message(ws) { return new Promise((resolve, reject) => ws.once('message', (data, isBinary) => { try { assert.equal(isBinary, true); resolve(cbor.decodeFirstSync(data, { required: true })) } catch (error) { reject(error) } })) }
+function noMessage(ws, milliseconds=50) { return Promise.race([message(ws).then(() => false), new Promise(resolve => setTimeout(() => resolve(true), milliseconds))]) }
 async function open(runtime) {
   runtime.server.listen(0, '127.0.0.1'); await once(runtime.server, 'listening')
   const ws = new WebSocket(`wss://127.0.0.1:${runtime.server.address().port}/device/v1`, { rejectUnauthorized: false })
@@ -90,6 +91,22 @@ test('authenticates a device, reports metadata, offers exact targeted firmware, 
     const response = await httpsGet(base + offer[4], { Authorization: `Bearer ${Buffer.from(offer[5]).toString('base64url')}` })
     assert.equal(response.status, 200); assert.deepEqual(response.body, f.bytes)
   } finally { close(runtime, ws) }
+})
+
+test('acknowledges only an authenticated registration at the accepted target version', { timeout: 5000 }, async () => {
+  const f = fixture(); const runtime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') })
+  const { ws } = await authenticate(runtime)
+  try {
+    ws.send(cbor.encodeCanonical([TYPE.REGISTRATION, '1.2.0', 'mindflayer-keypad-v1']))
+    assert.deepEqual(await message(ws), [TYPE.FIRMWARE_ACCEPTED, '1.2.0'])
+  } finally { close(runtime, ws) }
+})
+
+test('does not acknowledge an unacceptable version or hardware', { timeout: 5000 }, async () => {
+  for (const registration of [['1.2.0','other-hardware'],['9.9.9','mindflayer-keypad-v1']]) {
+    const f=fixture(); const runtime=createDeviceServer({devicesFile:f.devicesFile,firmwareDir:f.firmwareDir,tlsDir:path.join(f.root,'tls')}); const {ws}=await authenticate(runtime)
+    try { ws.send(cbor.encodeCanonical([TYPE.REGISTRATION,...registration])); assert.equal(await noMessage(ws),true) } finally { close(runtime,ws) }
+  }
 })
 
 test('rollout selection emits no grant for no target, current target, wrong hardware, or missing artifact', async () => {

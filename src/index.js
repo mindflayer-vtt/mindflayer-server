@@ -11,7 +11,7 @@ const defaultDispatcher = require('./message/dispatcher')
 const { calculateHmacBytes, safeBytesEqual } = require('./security/device-auth')
 const {
   AUTH_STATUS, MAX_DEVICE_FRAME_SIZE, decodeDeviceFrame, encodeAuthChallenge,
-  encodeAuthResult, encodeConfiguration, encodeUpdateAvailable
+  encodeAuthResult, encodeConfiguration, encodeUpdateAvailable, encodeFirmwareAccepted
 } = require('./device/protocol')
 const { DeviceStore } = require('./security/device-store')
 const { ensureDeviceTls } = require('./security/device-tls')
@@ -156,10 +156,16 @@ function createDeviceServer(options = {}) {
         return
       }
       try {
-        if (message.type === 'registration') dispatcher.dispatch(ws, {
-          type: 'registration', 'controller-id': ws.authenticatedDeviceId, status: 'connected', receiver: false,
-          firmware: message.firmware, hardware: message.hardware
-        })
+        if (message.type === 'registration') {
+          const device = store.get(ws.authenticatedDeviceId)
+          const accepted = !device.targetVersion || (message.firmware === device.targetVersion &&
+            Boolean(firmware.get(message.hardware, device.targetVersion)))
+          dispatcher.dispatch(ws, {
+            type: 'registration', 'controller-id': ws.authenticatedDeviceId, status: 'connected', receiver: false,
+            firmware: message.firmware, hardware: message.hardware
+          })
+          if (accepted) ws.send(encodeFirmwareAccepted(message.firmware), { binary: true })
+        }
         else if (message.type === 'key-event') dispatcher.dispatch(ws, {
           type: 'key-event', 'controller-id': ws.authenticatedDeviceId, key: message.key, state: message.state
         })

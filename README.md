@@ -77,7 +77,7 @@ No target means no update. Equal versions mean no update. Downgrades are rejecte
 
 The server only accepts prebuilt signed firmware; it never compiles or signs it. Copy the signed binary into the read-only firmware mount and create `manifest.json` following `firmware/manifest.example.json`. Each release declares schema version, hardware ID, semantic version, relative artifact path, byte size and SHA-256. Startup rejects invalid versions, missing or outside files, traversal, and size/hash mismatches. The SHA-256 is repository integrity metadata; the independent ESP8266 signature is what authorizes installation.
 
-Roll out to one keypad, verify its reconnect reports the target version, then add targets for further devices. Phase 1 has no automatic rollback: incomplete or invalid signed updates retain the current image, but valid buggy firmware may require serial recovery.
+Roll out to one keypad, verify its reconnect reports the target version, then add targets for further devices. After HMAC authentication, a registration that reports the configured target version receives restricted-CBOR `FIRMWARE_ACCEPTED`. This is distinct from authentication: it tells a temporary rBoot candidate that the server observed and accepted its semantic version/session, allowing the keypad's complete health gate to promote it. A registration at another version may receive an update offer but never the acceptance needed to promote that version. The server never knows or controls rBoot slot numbers.
 
 ## Development
 
