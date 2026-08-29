@@ -59,6 +59,8 @@ npm run device:bundle -- controller1 provisioning/controller1.provisioning.bin
 npm run device:serial-provision -- provisioning/controller1.provisioning.bin /dev/serial/by-path/...
 ```
 
+The serial sender automatically performs the keypad's double-reset recovery sequence through FTDI RTS. Recovery boot leaves the physically shared GPIO3/RXD0 out of NeoPixel DMA mode, sends the validated envelope, waits for acknowledgement, and requires no button press.
+
 Add rollout metadata to the device entry when ready:
 
 ```json

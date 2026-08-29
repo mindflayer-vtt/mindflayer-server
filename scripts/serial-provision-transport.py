@@ -24,13 +24,16 @@ try:
     termios.tcsetattr(fd, termios.TCSANOW, attributes)
 
     # NodeMCU-style FTDI wiring: keep GPIO0 released and pulse reset through RTS.
-    fcntl.ioctl(fd, termios.TIOCMBIC, int(termios.TIOCM_DTR).to_bytes(4, sys.byteorder))
-    fcntl.ioctl(fd, termios.TIOCMBIS, int(termios.TIOCM_RTS).to_bytes(4, sys.byteorder))
-    time.sleep(0.1)
-    fcntl.ioctl(fd, termios.TIOCMBIC, int(termios.TIOCM_RTS).to_bytes(4, sys.byteorder))
-    time.sleep(1.5)
+    # Two pulses enter the keypad's RTC-backed recovery boot before DMA claims RXD0.
+    clear_dtr = int(termios.TIOCM_DTR).to_bytes(4, sys.byteorder)
+    set_rts = int(termios.TIOCM_RTS).to_bytes(4, sys.byteorder)
     termios.tcflush(fd, termios.TCIFLUSH)
-
+    fcntl.ioctl(fd, termios.TIOCMBIC, clear_dtr)
+    for pause_after in (0.5, 1.2):
+        fcntl.ioctl(fd, termios.TIOCMBIS, set_rts)
+        time.sleep(0.1)
+        fcntl.ioctl(fd, termios.TIOCMBIC, set_rts)
+        time.sleep(pause_after)
     view = memoryview(envelope)
     while view:
         try:
@@ -52,7 +55,8 @@ try:
         received.extend(data)
         text = received.decode("utf-8", errors="ignore")
         if "PROVISIONING OK" in text:
-            print("Device acknowledged provisioning and rebooted.")
+            mode = "serial recovery" if "SERIAL PROVISIONING MODE" in text else "unprovisioned"
+            print(f"Device entered {mode} mode, acknowledged provisioning, and rebooted.")
             raise SystemExit(0)
         if "PROVISIONING ERROR" in text:
             raise SystemExit("Device rejected provisioning envelope")
