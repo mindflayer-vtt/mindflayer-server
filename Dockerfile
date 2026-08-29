@@ -35,8 +35,9 @@ COPY --chown=node:node . .
 # Run the server without root privileges
 USER node
 
-# Expose the node server port
-EXPOSE 10443
+# Foundry traffic is plain HTTP/WS for a browser-trusted reverse proxy. Keypads
+# connect directly to the separate TLS listener.
+EXPOSE 8080 10443
 
 # Start the server
 CMD [ "npm", "start" ]

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "releases": [
+    {
+      "hardware": "mindflayer-keypad-v1",
+      "version": "1.0.0",
+      "artifact": "mindflayer-keypad-v1/1.0.0/firmware.bin.signed",
+      "size": 123456,
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}
