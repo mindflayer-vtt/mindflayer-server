@@ -5,9 +5,9 @@
 #
 
 # Add some build args
-ARG NODE_VERSION=22-alpine
+ARG NODE_VERSION=24-alpine
 
-# Use Node 14 base image
+# Use the supported Node 24 LTS base image
 FROM node:$NODE_VERSION
 
 # Run in production mode
@@ -16,8 +16,8 @@ ENV NODE_ENV=production
 # Switch to /app directory
 WORKDIR /app
 
-# Add node server files to /app directory
-ADD . /app
+# Copy dependency manifests separately so installs can be cached
+COPY --chown=node:node package.json package-lock.json ./
 
 # Install the server dependencies
 RUN \
@@ -26,8 +26,14 @@ RUN \
     make \
     python3 \
     git && \
-  npm install --production && \
+  npm ci --omit=dev && \
   apk del .gyp-fix
+
+# Copy node server files to /app directory
+COPY --chown=node:node . .
+
+# Run the server without root privileges
+USER node
 
 # Expose the node server port
 EXPOSE 10443
