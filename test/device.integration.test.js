@@ -30,6 +30,15 @@ function fixture() {
 }
 function close(runtime, ws) { if (ws) ws.terminate(); for (const client of runtime.wss.clients) client.terminate(); runtime.wss.close(); runtime.server.close() }
 
+async function authenticate(runtime, id = 'controller1', secret = '11'.repeat(32)) {
+  const ws = await open(runtime)
+  const challenge = await json(ws)
+  ws.send(JSON.stringify({ type: 'auth-response', 'device-id': id, hmac: calculateHmac(Buffer.from(secret, 'hex'), id, challenge.challenge) }))
+  const accepted = await json(ws)
+  assert.equal(accepted.type, 'auth-ok')
+  return { ws, challenge }
+}
+
 test('uses canonical length-prefixed authentication input and known HMAC vector', () => {
   assert.equal(authInput('controller1', 'nonce').toString('hex'), '000000196d696e64666c617965722d6465766963652d617574682d76310000000b636f6e74726f6c6c657231000000056e6f6e6365')
   assert.equal(calculateHmac(Buffer.from('11'.repeat(32), 'hex'), 'controller1', 'nonce'), '7689f2a6005ab665f8a8fbf5dca46e63fafb9b2813ef08a3df0de168e052e63e')
@@ -41,6 +50,28 @@ test('persists TLS public key and fails safely for mismatched state', () => {
   assert.equal(first.publicKey, second.publicKey)
   fs.writeFileSync(second.certPath, fs.readFileSync(path.join(__dirname, '..', 'config/certs/snakeoil.pem')))
   assert.throws(() => ensureDeviceTls(root), /does not match|error/i)
+})
+
+test('repairs a missing certificate without replacing the TLS private key and rejects a missing key', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mindflayer-tls-state-'))
+  const first = ensureDeviceTls(root)
+  fs.unlinkSync(first.certPath)
+  const repaired = ensureDeviceTls(root)
+  assert.equal(repaired.publicKey, first.publicKey)
+  fs.unlinkSync(repaired.keyPath)
+  assert.throws(() => ensureDeviceTls(root), /certificate exists without its private key/)
+})
+
+test('device endpoint is TLS and each connection receives a fresh challenge', async () => {
+  const f = fixture(); const runtime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') })
+  runtime.server.listen(0, '127.0.0.1'); await once(runtime.server, 'listening')
+  const url = `wss://127.0.0.1:${runtime.server.address().port}/ws`
+  const first = new WebSocket(url, { rejectUnauthorized: false }); await once(first, 'open'); const a = await json(first)
+  const second = new WebSocket(url, { rejectUnauthorized: false }); await once(second, 'open'); const b = await json(second)
+  try {
+    assert.equal(a.type, 'auth-challenge'); assert.equal(a.version, 1)
+    assert.equal(b.type, 'auth-challenge'); assert.notEqual(a.challenge, b.challenge)
+  } finally { first.terminate(); second.terminate(); close(runtime) }
 })
 
 test('authenticates a device, reports metadata, offers exact targeted firmware, and authorizes download', { timeout: 5000 }, async () => {
@@ -57,6 +88,27 @@ test('authenticates a device, reports metadata, offers exact targeted firmware, 
     const response = await httpsGet(base + offer.url, { Authorization: `Bearer ${offer.token}` })
     assert.equal(response.status, 200); assert.deepEqual(response.body, f.bytes)
   } finally { close(runtime, ws) }
+})
+
+test('rollout selection emits no grant for no target, current target, wrong hardware, or missing artifact', async () => {
+  const cases = [
+    { target: null, current: '1.1.0', hardware: 'mindflayer-keypad-v1' },
+    { target: '1.2.0', current: '1.2.0', hardware: 'mindflayer-keypad-v1' },
+    { target: '1.2.0', current: '1.1.0', hardware: 'other-hardware' },
+    { target: '9.9.9', current: '1.1.0', hardware: 'mindflayer-keypad-v1' }
+  ]
+  for (const item of cases) {
+    const f = fixture(); const state = JSON.parse(fs.readFileSync(f.devicesFile))
+    if (item.target === null) delete state.devices.controller1.targetVersion
+    else state.devices.controller1.targetVersion = item.target
+    fs.writeFileSync(f.devicesFile, JSON.stringify(state))
+    const runtime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') })
+    const { ws } = await authenticate(runtime)
+    ws.send(JSON.stringify({ type: 'registration', 'controller-id': 'controller1', status: 'connected', receiver: false, firmware: item.current, hardware: item.hardware }))
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(runtime.tokens.tokens.size, 0)
+    close(runtime, ws)
+  }
 })
 
 test('rejects invalid, unknown, replayed, unauthenticated, and identity-changing clients', { timeout: 10000 }, async () => {
@@ -81,6 +133,44 @@ test('validates firmware paths, size, and hashes and expires opaque grants', () 
   assert.throws(() => new FirmwareRepository(f.firmwareDir), /traversal/)
   let now = 10; const tokens = new OtaTokens({ lifetimeMs: 5, now: () => now }); const token = tokens.issue('a', { version: '1.0.0' }); now = 16
   assert.equal(tokens.consume(token), null)
+})
+
+test('rejects invalid manifests and firmware size or hash mismatches', () => {
+  for (const mutation of [
+    manifest => { manifest.version = 2 },
+    manifest => { manifest.releases[0].size++ },
+    manifest => { manifest.releases[0].sha256 = '00'.repeat(32) }
+  ]) {
+    const f = fixture(); const manifestPath = path.join(f.firmwareDir, 'manifest.json')
+    const manifest = JSON.parse(fs.readFileSync(manifestPath)); mutation(manifest)
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest))
+    assert.throws(() => new FirmwareRepository(f.firmwareDir), /manifest|size|hash/i)
+  }
+})
+
+test('OTA grants are opaque, short-lived, and bound to their exact artifact', async () => {
+  const f = fixture(); const repository = new FirmwareRepository(f.firmwareDir)
+  const release = repository.get('mindflayer-keypad-v1', '1.2.0')
+  const tokens = new OtaTokens(); const token = tokens.issue('controller1', release)
+  assert.match(token, /^[A-Za-z0-9_-]{40,}$/)
+  const runtime = createDeviceServer({ devicesFile: f.devicesFile, firmwareRepository: repository, tokens, tlsDir: path.join(f.root, 'tls') })
+  runtime.server.listen(0, '127.0.0.1'); await once(runtime.server, 'listening')
+  const base = `https://127.0.0.1:${runtime.server.address().port}`
+  try {
+    assert.equal((await httpsGet(`${base}/firmware/other-hardware/1.2.0`, { Authorization: `Bearer ${token}` })).status, 401)
+    assert.equal((await httpsGet(`${base}/firmware/mindflayer-keypad-v1/9.9.9`, { Authorization: `Bearer ${token}` })).status, 401)
+    assert.equal((await httpsGet(`${base}/firmware/mindflayer-keypad-v1/1.2.0`, { Authorization: 'Bearer definitely-wrong' })).status, 401)
+  } finally { close(runtime) }
+})
+
+test('malformed authenticated device messages do not crash the listener', { timeout: 5000 }, async () => {
+  const f = fixture(); const runtime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') })
+  const { ws } = await authenticate(runtime)
+  try {
+    ws.send('{not-json')
+    await once(ws, 'close')
+    assert.equal(runtime.server.listening, true)
+  } finally { close(runtime) }
 })
 
 function httpsGet(url, headers = {}) {
