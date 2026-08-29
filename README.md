@@ -3,7 +3,7 @@
 The server has two deliberately separate endpoints:
 
 - `http://0.0.0.0:8080` (`FOUNDRY_PORT`): browser/Foundry HTTP and WebSocket traffic, intended only for a browser-trusted reverse proxy.
-- `https://0.0.0.0:10443` (`DEVICE_PORT`): direct keypad WSS and authorized firmware downloads, using its own persistent self-signed TLS identity.
+- `https://0.0.0.0:10443` (`DEVICE_PORT`): binary restricted-CBOR keypad WSS at `/device/v1` and authorized firmware downloads, using its own persistent self-signed TLS identity.
 
 The reverse proxy remains outside this repository. Configure the Foundry module with its external reverse-proxy host, port and `/ws` path; it already constructs the appropriate external `wss://` URL.
 
@@ -40,7 +40,7 @@ On first start the server creates `/data/tls/device-key.pem` (mode 0600) and a s
 openssl pkey -in /data/tls/device-key.pem -pubout -out device-public.pem
 ```
 
-Provision `device-public.pem` into each keypad's ignored local configuration. Losing the private key changes server identity; every keypad then needs the replacement public key provisioned by a trusted serial process. Corrupt or mismatched key/certificate state fails startup instead of silently changing identity.
+The host bundle tool exports this public key as DER/SPKI into each keypad's serial provisioning envelope. Losing the private key changes server identity; every keypad then needs trusted serial reprovisioning. Corrupt or mismatched key/certificate state fails startup instead of silently changing identity.
 
 ## Device provisioning and rollout
 
@@ -50,7 +50,16 @@ Create a unique 256-bit device secret:
 MINDFLAYER_DATA_DIR=/data npm run device:provision -- controller1
 ```
 
-The command stores `/data/devices.json` with restrictive permissions and displays the new secret once for transfer into ignored keypad configuration. Normal logs never include it. Add rollout metadata to that device entry when ready:
+The command stores `/data/devices.json` with restrictive permissions. Create a mode-0600 ignored serial bundle without printing its secret fields:
+
+```sh
+MINDFLAYER_DATA_DIR=/data MINDFLAYER_WIFI_SSID='ssid' \
+MINDFLAYER_WIFI_PASSWORD='password' MINDFLAYER_SERVER_HOST='10.42.0.1' \
+npm run device:bundle -- controller1 provisioning/controller1.provisioning.bin
+npm run device:serial-provision -- provisioning/controller1.provisioning.bin /dev/serial/by-path/...
+```
+
+Add rollout metadata to the device entry when ready:
 
 ```json
 {
