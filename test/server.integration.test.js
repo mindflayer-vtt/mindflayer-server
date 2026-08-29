@@ -4,6 +4,7 @@ const WebSocket = require('ws')
 const { once } = require('node:events')
 const { start } = require('../src')
 const registry = require('../src/connection/registry')
+const protocol = require('./fixtures/protocol.json')
 
 function nextJson(ws) {
   return new Promise((resolve, reject) => {
@@ -45,9 +46,7 @@ test('relays the complete controller protocol over real WebSocket connections', 
 
   const controllerOne = await connect(url)
   sockets.push(controllerOne)
-  controllerOne.send(JSON.stringify({
-    type: 'registration', 'controller-id': 'controller1', status: 'connected', receiver: false
-  }))
+  controllerOne.send(JSON.stringify(protocol.controllerRegistration))
   await waitFor(() => registry.getControllerConnections().some(
     connection => connection.controllerId === 'controller1'
   ))
@@ -55,10 +54,7 @@ test('relays the complete controller protocol over real WebSocket connections', 
   const receiver = await connect(url)
   sockets.push(receiver)
   const knownController = nextJson(receiver)
-  receiver.send(JSON.stringify({
-    type: 'registration', 'controller-id': null, status: 'connected', receiver: true,
-    players: [{ id: 'player1', name: 'Player One' }]
-  }))
+  receiver.send(JSON.stringify(protocol.receiverRegistration))
   assert.deepEqual(await knownController, {
     type: 'registration', 'controller-id': 'controller1', status: 'connected', receiver: false
   })
@@ -73,20 +69,27 @@ test('relays the complete controller protocol over real WebSocket connections', 
     type: 'registration', 'controller-id': 'controller2', status: 'connected', receiver: false
   })
 
-  const keyEvent = {
-    type: 'key-event', 'controller-id': 'controller1', key: 'W', state: 'down'
-  }
+  const keyEvent = protocol.keyEvent
   const relayedKey = nextJson(receiver)
   controllerOne.send(JSON.stringify(keyEvent))
   assert.deepEqual(await relayedKey, keyEvent)
 
-  const configuration = {
-    type: 'configuration', 'controller-id': 'controller2',
-    led1: { r: 1, g: 2, b: 3 }, led2: { r: 4, g: 5, b: 6 }
-  }
-  const routedConfiguration = nextJson(controllerTwo)
+  const configuration = protocol.configuration
+  const routedConfiguration = nextJson(controllerOne)
   receiver.send(JSON.stringify(configuration))
   assert.deepEqual(await routedConfiguration, configuration)
+
+  const keyboardLogin = nextJson(receiver)
+  const loginResponse = await fetch(`http://127.0.0.1:${address.port}/api/players/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      'controller-id': protocol.keyboardLogin['controller-id'],
+      'player-id': protocol.keyboardLogin['player-id']
+    })
+  })
+  assert.equal(loginResponse.status, 200)
+  assert.deepEqual(await keyboardLogin, protocol.keyboardLogin)
 
   controllerOne.send('{malformed')
   const stillAlive = nextJson(receiver)

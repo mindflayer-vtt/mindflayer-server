@@ -1,20 +1,20 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const dispatcher = require('../src/message/dispatcher')
+const protocol = require('./fixtures/protocol.json')
 
 test('dispatches each supported protocol message to its handler group', () => {
   const cases = [
-    ['key-event', 'VTTKeyEventMessage'],
-    ['registration', 'VTTRegistrationMessage'],
-    ['configuration', 'VTTConfigurationMessage'],
-    ['ambilight', 'VTTAmbilightMessage']
+    [protocol.keyEvent, 'VTTKeyEventMessage'],
+    [protocol.controllerRegistration, 'VTTRegistrationMessage'],
+    [protocol.configuration, 'VTTConfigurationMessage'],
+    [protocol.ambilight, 'VTTAmbilightMessage']
   ]
-  for (const [type, group] of cases) {
+  for (const [message, group] of cases) {
     let received
     const handler = (origin, message) => { received = { origin, message } }
     dispatcher.handlers[group].push(handler)
     const origin = {}
-    const message = { type }
     dispatcher.dispatch(origin, message)
     dispatcher.handlers[group].pop()
     assert.deepEqual(received, { origin, message })
