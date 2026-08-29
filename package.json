@@ -4,7 +4,9 @@
   "description": "A lightweight websocket server for relaying messages to the Mind Flayer VTT module",
   "main": "index.js",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "test": "node --test",
+    "test:watch": "node --test --watch"
   },
   "author": "749, shawly",
   "license": "GPL-3.0-only",
