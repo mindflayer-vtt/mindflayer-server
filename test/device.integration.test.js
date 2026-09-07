@@ -51,7 +51,8 @@ test('persists TLS public key and fails safely for mismatched state', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mindflayer-tls-'))
   const first = ensureDeviceTls(root); const second = ensureDeviceTls(root)
   assert.equal(first.publicKey, second.publicKey)
-  fs.writeFileSync(second.certPath, fs.readFileSync(path.join(__dirname, '..', 'config/certs/snakeoil.pem')))
+  const unrelated = ensureDeviceTls(fs.mkdtempSync(path.join(os.tmpdir(), 'mindflayer-unrelated-tls-')))
+  fs.writeFileSync(second.certPath, fs.readFileSync(unrelated.certPath))
   assert.throws(() => ensureDeviceTls(root), /does not match|error/i)
 })
 
@@ -187,6 +188,22 @@ test('OTA grants are opaque, short-lived, and bound to their exact artifact', as
   } finally { close(runtime) }
 })
 
+test('returns 404 without crashing when a firmware artifact disappears before download', async () => {
+  const f = fixture(); const repository = new FirmwareRepository(f.firmwareDir)
+  const release = repository.get('mindflayer-keypad-v1', '1.2.0')
+  const tokens = new OtaTokens(); const token = tokens.issue('controller1', release)
+  const runtime = createDeviceServer({ devicesFile: f.devicesFile, firmwareRepository: repository, tokens, tlsDir: path.join(f.root, 'tls') })
+  runtime.server.listen(0, '127.0.0.1'); await once(runtime.server, 'listening')
+  fs.unlinkSync(release.file)
+  try {
+    const response = await httpsGet(`https://127.0.0.1:${runtime.server.address().port}/firmware/${release.hardware}/${release.version}`, {
+      Authorization: `Bearer ${token}`
+    })
+    assert.equal(response.status, 404)
+    assert.equal(runtime.server.listening, true)
+  } finally { close(runtime) }
+})
+
 test('malformed authenticated device messages do not crash the listener', { timeout: 5000 }, async () => {
   const f = fixture(); const runtime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') })
   const { ws } = await authenticate(runtime)
@@ -195,6 +212,18 @@ test('malformed authenticated device messages do not crash the listener', { time
     await once(ws, 'close')
     assert.equal(runtime.server.listening, true)
   } finally { close(runtime) }
+})
+
+test('rejects device WebSocket messages larger than the protocol limit', { timeout: 5000 }, async () => {
+  const f = fixture(); const runtime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') })
+  const ws = await open(runtime)
+  try {
+    await message(ws)
+    ws.send(Buffer.alloc(513))
+    const [code] = await once(ws, 'close')
+    assert.equal(code, 1009)
+    assert.equal(runtime.server.listening, true)
+  } finally { close(runtime, ws) }
 })
 
 function httpsGet(url, headers = {}) {

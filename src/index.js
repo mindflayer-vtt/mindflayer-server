@@ -21,6 +21,7 @@ const { OtaTokens } = require('./firmware/tokens')
 const DEFAULT_FOUNDRY_PORT = 8080
 const DEFAULT_DEVICE_PORT = 10443
 const DEFAULT_PORT = DEFAULT_DEVICE_PORT
+const MAX_FOUNDRY_FRAME_SIZE = 64 * 1024
 
 function registerProtocolHandlers(registry, dispatcher) {
   if (!registry.attach(dispatcher)) return
@@ -73,9 +74,12 @@ function createFoundryApp(registry = new ConnectionRegistry()) {
   return app
 }
 
-function attachWebSocket(server, expectedPath, onConnection) {
-  const wss = new WebSocket.Server({ noServer: true })
-  wss.on('connection', onConnection)
+function attachWebSocket(server, expectedPath, maxPayload, onConnection) {
+  const wss = new WebSocket.Server({ noServer: true, maxPayload })
+  wss.on('connection', (ws, request) => {
+    ws.on('error', error => log.debug(error))
+    onConnection(ws, request)
+  })
   server.on('upgrade', (request, socket, head) => {
     let pathname
     try { pathname = new URL(request.url, 'http://localhost').pathname } catch { socket.destroy(); return }
@@ -92,7 +96,7 @@ function createFoundryServer(options = {}) {
   registerProtocolHandlers(registry, dispatcher)
   const app = createFoundryApp(registry)
   const server = options.tls ? https.createServer(options.tls, app) : http.createServer(app)
-  const wss = attachWebSocket(server, '/ws', ws => {
+  const wss = attachWebSocket(server, '/ws', MAX_FOUNDRY_FRAME_SIZE, ws => {
     registry.addConnection(ws)
     ws.on('message', data => {
       try { dispatcher.dispatch(ws, JSON.parse(data)) } catch (error) { log.warn('Rejected malformed Foundry message'); log.debug(error) }
@@ -121,11 +125,19 @@ function createDeviceServer(options = {}) {
   app.get('/firmware/:hardware/:version', (req, res) => {
     const grant = tokens.consume(parseBearer(req))
     if (!grant || grant.release.hardware !== req.params.hardware || grant.release.version !== req.params.version) return res.sendStatus(401)
-    res.set({ 'Content-Type': 'application/octet-stream', 'Content-Length': grant.release.size, 'Cache-Control': 'no-store' })
-    fs.createReadStream(grant.release.file).pipe(res)
+    const stream = fs.createReadStream(grant.release.file)
+    stream.once('open', () => {
+      res.set({ 'Content-Type': 'application/octet-stream', 'Content-Length': grant.release.size, 'Cache-Control': 'no-store' })
+      stream.pipe(res)
+    })
+    stream.once('error', error => {
+      log.error(`Unable to stream firmware ${grant.release.hardware} ${grant.release.version}: ${error.message}`)
+      if (!res.headersSent) res.sendStatus(404)
+      else res.destroy(error)
+    })
   })
   const server = https.createServer(tls, app)
-  const wss = attachWebSocket(server, '/device/v1', ws => {
+  const wss = attachWebSocket(server, '/device/v1', MAX_DEVICE_FRAME_SIZE, ws => {
     ws.deviceProtocol = 1
     ws.deviceAuthenticated = false
     ws.authChallenge = crypto.randomBytes(32)
@@ -209,4 +221,4 @@ function startAll(options = {}) {
 
 if (require.main === module) startAll()
 
-module.exports = { DEFAULT_PORT, DEFAULT_FOUNDRY_PORT, DEFAULT_DEVICE_PORT, compareVersions, createApp, createServer, createFoundryServer, createDeviceServer, start, startAll }
+module.exports = { DEFAULT_PORT, DEFAULT_FOUNDRY_PORT, DEFAULT_DEVICE_PORT, MAX_FOUNDRY_FRAME_SIZE, compareVersions, createApp, createServer, createFoundryServer, createDeviceServer, start, startAll }

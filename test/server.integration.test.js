@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const WebSocket = require('ws')
 const { once } = require('node:events')
-const { start } = require('../src')
+const { MAX_FOUNDRY_FRAME_SIZE, start } = require('../src')
 const protocol = require('./fixtures/protocol.json')
 
 function nextJson(ws) {
@@ -120,4 +120,19 @@ test('rejects WebSocket upgrades outside the configured path', { timeout: 5000 }
   const [error] = await once(ws, 'error')
   assert.match(error.message, /socket hang up/)
   runtime.wss.close()
+})
+
+test('rejects oversized Foundry WebSocket messages', { timeout: 5000 }, async t => {
+  const runtime = start({ port: 0, host: '127.0.0.1', tls: false })
+  await once(runtime.server, 'listening')
+  t.after(() => {
+    for (const client of runtime.wss.clients) client.terminate()
+    runtime.wss.close()
+    runtime.server.close()
+    runtime.registry.close()
+  })
+  const ws = await connect(`ws://127.0.0.1:${runtime.server.address().port}/ws`)
+  ws.send('x'.repeat(MAX_FOUNDRY_FRAME_SIZE + 1))
+  const [code] = await once(ws, 'close')
+  assert.equal(code, 1009)
 })
