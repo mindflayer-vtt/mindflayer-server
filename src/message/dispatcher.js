@@ -1,14 +1,6 @@
 const log = require('../config/logger')
 
-const handlers = {
-  VTTMessage: [VTTMessageHandler],
-  VTTKeyEventMessage: [],
-  VTTRegistrationMessage: [],
-  VTTConfigurationMessage: [],
-  VTTAmbilightMessage: []
-}
-
-function VTTMessageHandler(origin, message) {
+function dispatchByType(handlers, origin, message) {
   if(!message || !message.hasOwnProperty("type")) {
     log.info("Message does not have a type:" + message)
   } else {
@@ -35,10 +27,16 @@ function VTTMessageHandler(origin, message) {
   }
 }
 
-function dispatch(origin, message) {
-  handlers.VTTMessage.forEach(handler => handler(origin, message))
+function createDispatcher() {
+  const handlers = {
+    VTTMessage: [],
+    VTTKeyEventMessage: [],
+    VTTRegistrationMessage: [],
+    VTTConfigurationMessage: [],
+    VTTAmbilightMessage: []
+  }
+  handlers.VTTMessage.push((origin, message) => dispatchByType(handlers, origin, message))
+  return { handlers, dispatch: (origin, message) => handlers.VTTMessage.forEach(handler => handler(origin, message)) }
 }
 
-module.exports = {
-  handlers, dispatch
-}
+module.exports = { createDispatcher }

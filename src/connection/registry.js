@@ -3,78 +3,64 @@ const log = require('../config/logger')
 
 const HEALTHCHECK_TIME = 30
 
-/**
- * @type WebSocket[]
- */
-let connections = []
-let _dispatcher = null
+class ConnectionRegistry {
+  constructor({ healthCheckTime = HEALTHCHECK_TIME } = {}) {
+    this.healthCheckTime = healthCheckTime
+    this.connections = []
+    this.dispatcher = null
+    this.healthCheckInterval = setInterval(() => this.checkHealth(), healthCheckTime * 1000)
+  }
 
-function noop() {}
+  attach(dispatcher) {
+    if (this.dispatcher === dispatcher) return false
+    this.dispatcher = dispatcher
+    dispatcher.handlers.VTTMessage.push(connection => this.heartbeat(connection))
+    return true
+  }
 
-function attach(dispatcher) {
-  _dispatcher = dispatcher
-  dispatcher.handlers.VTTMessage.push(heartbeat)
-}
+  getConnections() { return [...this.connections] }
+  getReceiverConnections() { return this.connections.filter(connection => connection.receiver === true) }
+  getControllerConnections() { return this.connections.filter(connection => connection.receiver === false) }
 
-function getConnections() {
-  return [...connections]
-}
-
-function getReceiverConnections() {
-  return connections.filter(conn => conn.receiver === true)
-}
-
-function getControllerConnections() {
-  return connections.filter(conn => conn.receiver === false)
-}
-
-function addConnection(connection) {
-  if(!connections.includes(connection)) {
-    connections.push(connection)
-
+  addConnection(connection) {
+    if (this.connections.includes(connection)) return
+    this.connections.push(connection)
     connection.receiver = null
     connection.controllerId = null
-    heartbeat(connection)
-    connection.on('pong', heartbeat.bind(connection, connection))
-
-    connection.on('close', function() {
+    this.heartbeat(connection)
+    connection.on('pong', () => this.heartbeat(connection))
+    connection.on('close', () => {
       log.debug('client disconnected')
-      removeConnection(connection)
+      this.removeConnection(connection)
     })
+  }
+
+  removeConnection(connection) {
+    this.connections = this.connections.filter(candidate => candidate !== connection)
+    if (this.dispatcher && connection.controllerId !== null) {
+      this.dispatcher.dispatch(connection, {
+        type: 'registration',
+        'controller-id': connection.controllerId,
+        status: 'disconnected',
+        receiver: false
+      })
+    }
+  }
+
+  heartbeat(connection) { connection.lastMessageTime = moment() }
+
+  checkHealth() {
+    const minimum = moment().subtract(this.healthCheckTime * 1.5, 'seconds')
+    this.connections.forEach(connection => {
+      if (minimum.isAfter(connection.lastMessageTime)) connection.terminate()
+      else connection.ping(() => {})
+    })
+  }
+
+  close() {
+    clearInterval(this.healthCheckInterval)
+    this.connections = []
   }
 }
 
-function removeConnection(connection) {
-  connections = connections.filter(conn => conn != connection)
-  if(_dispatcher != null && connection.controllerId != null){
-    _dispatcher.dispatch(connection, {
-      type: "registration",
-      "controller-id": connection.controllerId,
-      status: "disconnected",
-      receiver: false
-    })
-  }
-}
-
-function heartbeat(connection) {
-  connection.lastMessageTime = moment()
-}
-
-function checkHealth() {
-  const minimumLastMessageTime = moment().subtract(HEALTHCHECK_TIME*1.5, 'seconds')
-  connections.forEach(function pingWebsocket(ws) {
-    if (minimumLastMessageTime.isAfter(ws.lastMessageTime)) return ws.terminate();
-
-    ws.ping(noop);
-  });
-}
-
-const healthCheckInterval = setInterval(checkHealth, HEALTHCHECK_TIME*1000)
-
-function close() {
-  clearInterval(healthCheckInterval)
-}
-
-module.exports = {
-  attach, addConnection, removeConnection, heartbeat, getConnections, getReceiverConnections, getControllerConnections, close
-}
+module.exports = { ConnectionRegistry, HEALTHCHECK_TIME }

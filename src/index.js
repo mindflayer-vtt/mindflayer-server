@@ -6,8 +6,8 @@ const path = require('path')
 const express = require('express')
 const WebSocket = require('ws')
 const log = require('./config/logger')
-const defaultRegistry = require('./connection/registry')
-const defaultDispatcher = require('./message/dispatcher')
+const { ConnectionRegistry } = require('./connection/registry')
+const { createDispatcher } = require('./message/dispatcher')
 const { calculateHmacBytes, safeBytesEqual } = require('./security/device-auth')
 const {
   AUTH_STATUS, MAX_DEVICE_FRAME_SIZE, decodeDeviceFrame, encodeAuthChallenge,
@@ -23,9 +23,7 @@ const DEFAULT_DEVICE_PORT = 10443
 const DEFAULT_PORT = DEFAULT_DEVICE_PORT
 
 function registerProtocolHandlers(registry, dispatcher) {
-  if (dispatcher.__mindflayerHandlersRegistered) return
-  dispatcher.__mindflayerHandlersRegistered = true
-  registry.attach(dispatcher)
+  if (!registry.attach(dispatcher)) return
   dispatcher.handlers.VTTKeyEventMessage.push((source, message) => {
     registry.getReceiverConnections().forEach(conn => conn.send(JSON.stringify(message)))
   })
@@ -58,11 +56,12 @@ function registerProtocolHandlers(registry, dispatcher) {
   dispatcher.handlers.VTTAmbilightMessage.push(require('./handlers/ambilight'))
 }
 
-function createFoundryApp(registry = defaultRegistry) {
+function createFoundryApp(registry = new ConnectionRegistry()) {
   const app = express()
   app.use(express.static(path.join(__dirname, '..', 'static')))
   app.use(express.json())
   app.use(express.urlencoded({ extended: true }))
+  app.get('/healthz', (_req, res) => res.json({ status: 'ok' }))
   app.post('/api/players/register', (req, res) => {
     res.end()
     const data = JSON.stringify({ type: 'keyboard-login', 'controller-id': req.body['controller-id'], 'player-id': req.body['player-id'] })
@@ -87,8 +86,9 @@ function attachWebSocket(server, expectedPath, onConnection) {
 }
 
 function createFoundryServer(options = {}) {
-  const registry = options.registry || defaultRegistry
-  const dispatcher = options.dispatcher || defaultDispatcher
+  const ownsRegistry = !options.registry
+  const registry = options.registry || new ConnectionRegistry()
+  const dispatcher = options.dispatcher || createDispatcher()
   registerProtocolHandlers(registry, dispatcher)
   const app = createFoundryApp(registry)
   const server = options.tls ? https.createServer(options.tls, app) : http.createServer(app)
@@ -98,8 +98,8 @@ function createFoundryServer(options = {}) {
       try { dispatcher.dispatch(ws, JSON.parse(data)) } catch (error) { log.warn('Rejected malformed Foundry message'); log.debug(error) }
     })
   })
-  wss.on('close', () => registry.close())
-  return { app, server, wss }
+  if (ownsRegistry) wss.on('close', () => registry.close())
+  return { app, server, wss, registry, dispatcher }
 }
 
 function parseBearer(request) {
@@ -108,14 +108,16 @@ function parseBearer(request) {
 }
 
 function createDeviceServer(options = {}) {
-  const registry = options.registry || defaultRegistry
-  const dispatcher = options.dispatcher || defaultDispatcher
+  const ownsRegistry = !options.registry
+  const registry = options.registry || new ConnectionRegistry()
+  const dispatcher = options.dispatcher || createDispatcher()
   registerProtocolHandlers(registry, dispatcher)
   const store = options.deviceStore || new DeviceStore(options.devicesFile || path.join(process.env.MINDFLAYER_DATA_DIR || './data', 'devices.json'))
   const firmware = options.firmwareRepository || new FirmwareRepository(options.firmwareDir || process.env.MINDFLAYER_FIRMWARE_DIR || './firmware')
   const tokens = options.tokens || new OtaTokens()
   const tls = options.tls || ensureDeviceTls(options.tlsDir || path.join(process.env.MINDFLAYER_DATA_DIR || './data', 'tls'))
   const app = express()
+  app.get('/healthz', (_req, res) => res.json({ status: 'ok' }))
   app.get('/firmware/:hardware/:version', (req, res) => {
     const grant = tokens.consume(parseBearer(req))
     if (!grant || grant.release.hardware !== req.params.hardware || grant.release.version !== req.params.version) return res.sendStatus(401)
@@ -173,8 +175,8 @@ function createDeviceServer(options = {}) {
       } catch (error) { log.warn('Rejected malformed device message'); log.debug(error) }
     })
   })
-  wss.on('close', () => registry.close())
-  return { app, server, wss, store, firmware, tokens, tls }
+  if (ownsRegistry) wss.on('close', () => registry.close())
+  return { app, server, wss, store, firmware, tokens, tls, registry, dispatcher }
 }
 
 function compareVersions(a, b) {
@@ -193,8 +195,15 @@ function createServer(options = {}) { return createFoundryServer(options) }
 function createApp(registry) { return createFoundryApp(registry) }
 function start(options = {}) { return listen(createFoundryServer(options), options.port ?? DEFAULT_FOUNDRY_PORT, options.host, 'Foundry') }
 function startAll(options = {}) {
-  const foundry = listen(createFoundryServer(options), options.foundryPort ?? Number(process.env.FOUNDRY_PORT || DEFAULT_FOUNDRY_PORT), options.host || process.env.FOUNDRY_HOST, 'Foundry')
-  const device = listen(createDeviceServer(options), options.devicePort ?? Number(process.env.DEVICE_PORT || DEFAULT_DEVICE_PORT), options.deviceHost || process.env.DEVICE_HOST, 'Device')
+  const registry = options.registry || new ConnectionRegistry()
+  const dispatcher = options.dispatcher || createDispatcher()
+  const sharedOptions = { ...options, registry, dispatcher }
+  const foundry = listen(createFoundryServer(sharedOptions), options.foundryPort ?? Number(process.env.FOUNDRY_PORT || DEFAULT_FOUNDRY_PORT), options.host || process.env.FOUNDRY_HOST, 'Foundry')
+  const device = listen(createDeviceServer(sharedOptions), options.devicePort ?? Number(process.env.DEVICE_PORT || DEFAULT_DEVICE_PORT), options.deviceHost || process.env.DEVICE_HOST, 'Device')
+  let openServers = 2
+  const closeRegistry = () => { if (--openServers === 0) registry.close() }
+  foundry.wss.once('close', closeRegistry)
+  device.wss.once('close', closeRegistry)
   return { foundry, device }
 }
 

@@ -1,9 +1,10 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const dispatcher = require('../src/message/dispatcher')
+const { createDispatcher } = require('../src/message/dispatcher')
 const protocol = require('./fixtures/protocol.json')
 
 test('dispatches each supported protocol message to its handler group', () => {
+  const dispatcher = createDispatcher()
   const cases = [
     [protocol.keyEvent, 'VTTKeyEventMessage'],
     [protocol.controllerRegistration, 'VTTRegistrationMessage'],
@@ -22,6 +23,7 @@ test('dispatches each supported protocol message to its handler group', () => {
 })
 
 test('ignores missing and unknown message types', () => {
+  const dispatcher = createDispatcher()
   const counts = Object.fromEntries(
     Object.entries(dispatcher.handlers).map(([name, handlers]) => [name, handlers.length])
   )

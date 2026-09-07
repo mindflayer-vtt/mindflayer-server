@@ -1,6 +1,22 @@
 # Ignore unrelated stuff
-.git/*
-.vscode/*
+.git
+.github
+.vscode
+.briefing
+.codex
+.agents
 .gitignore
+.nvmrc
 LICENSE
 README.md
+CREDITS.md
+MODERNIZATION.md
+PRE_UPGRADE_BASELINE.md
+CHANGELOG.md
+node_modules
+npm-debug.log*
+data
+test
+config
+firmware
+*.provisioning.bin

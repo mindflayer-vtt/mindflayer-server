@@ -16,6 +16,8 @@ RUN apk add --no-cache openssl
 
 # Run in production mode
 ENV NODE_ENV=production
+ENV MINDFLAYER_DATA_DIR=/data
+ENV MINDFLAYER_FIRMWARE_DIR=/firmware
 
 # Switch to /app directory
 WORKDIR /app
@@ -33,8 +35,12 @@ RUN \
   npm ci --omit=dev && \
   apk del .gyp-fix
 
-# Copy node server files to /app directory
-COPY --chown=node:node . .
+# Copy only runtime files. Keeping this allowlist explicit prevents local data,
+# credentials, tests, and host-native node_modules from entering the image.
+COPY --chown=node:node src ./src
+COPY --chown=node:node static ./static
+COPY --chown=node:node scripts ./scripts
+RUN mkdir -p /data /firmware && chown node:node /data /firmware
 
 # Run the server without root privileges
 USER node
@@ -42,6 +48,10 @@ USER node
 # Foundry traffic is plain HTTP/WS for a browser-trusted reverse proxy. Keypads
 # connect directly to the separate TLS listener.
 EXPOSE 8080 10443
+VOLUME [ "/data" ]
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD [ "node", "scripts/healthcheck.js" ]
 
 # Start the server
 CMD [ "npm", "start" ]

@@ -10,7 +10,6 @@ const { once } = require('events')
 const { startAll } = require('../src')
 const { calculateHmac } = require('../src/security/device-auth')
 const { TYPE } = require('../src/device/protocol')
-const registry = require('../src/connection/registry')
 
 function next(ws) { return new Promise(resolve => ws.once('message', (data, isBinary) => resolve({ data, isBinary }))) }
 test('Foundry JSON translates through typed semantics to exact device CBOR and back', { timeout: 5000 }, async t => {
@@ -18,7 +17,7 @@ test('Foundry JSON translates through typed semantics to exact device CBOR and b
   fs.writeFileSync(devicesFile, JSON.stringify({ version: 1, devices: { controller1: { secret: '11'.repeat(32) } } }))
   const runtime = startAll({ foundryPort: 0, devicePort: 0, host: '127.0.0.1', deviceHost: '127.0.0.1', devicesFile, firmwareDir: path.join(root, 'firmware'), tlsDir: path.join(root, 'tls') })
   await Promise.all([once(runtime.foundry.server, 'listening'), once(runtime.device.server, 'listening')]); const sockets = []
-  t.after(() => { for (const ws of sockets) ws.terminate(); for (const side of [runtime.foundry, runtime.device]) { for (const ws of side.wss.clients) ws.terminate(); side.wss.close(); side.server.close() } registry.close() })
+  t.after(() => { for (const ws of sockets) ws.terminate(); for (const side of [runtime.foundry, runtime.device]) { for (const ws of side.wss.clients) ws.terminate(); side.wss.close(); side.server.close() } runtime.foundry.registry.close() })
   const device = new WebSocket(`wss://127.0.0.1:${runtime.device.server.address().port}/device/v1`, { rejectUnauthorized: false }); sockets.push(device); await once(device, 'open')
   const challengeFrame = await next(device); assert.equal(challengeFrame.isBinary, true); const challenge = cbor.decodeFirstSync(challengeFrame.data)
   device.send(cbor.encodeCanonical([TYPE.AUTH_RESPONSE, 'controller1', Buffer.from(calculateHmac(Buffer.from('11'.repeat(32), 'hex'), 'controller1', challenge[2]), 'hex')]))

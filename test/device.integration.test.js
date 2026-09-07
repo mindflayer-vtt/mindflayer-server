@@ -69,6 +69,8 @@ test('device endpoint is TLS and each connection receives a fresh challenge', as
   const f = fixture(); const runtime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') })
   runtime.server.listen(0, '127.0.0.1'); await once(runtime.server, 'listening')
   const url = `wss://127.0.0.1:${runtime.server.address().port}/device/v1`
+  const health = await httpsGet(`https://127.0.0.1:${runtime.server.address().port}/healthz`)
+  assert.equal(health.status, 200)
   const first = new WebSocket(url, { rejectUnauthorized: false }); await once(first, 'open'); const a = await message(first)
   const second = new WebSocket(url, { rejectUnauthorized: false }); await once(second, 'open'); const b = await message(second)
   try {

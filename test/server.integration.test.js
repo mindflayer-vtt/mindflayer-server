@@ -3,7 +3,6 @@ const assert = require('node:assert/strict')
 const WebSocket = require('ws')
 const { once } = require('node:events')
 const { start } = require('../src')
-const registry = require('../src/connection/registry')
 const protocol = require('./fixtures/protocol.json')
 
 function nextJson(ws) {
@@ -41,13 +40,17 @@ test('relays the complete controller protocol over real WebSocket connections', 
     for (const socket of runtime.wss.clients) socket.terminate()
     runtime.wss.close()
     runtime.server.close()
-    registry.close()
+    runtime.registry.close()
   })
+
+  const health = await fetch(`http://127.0.0.1:${address.port}/healthz`)
+  assert.equal(health.status, 200)
+  assert.deepEqual(await health.json(), { status: 'ok' })
 
   const controllerOne = await connect(url)
   sockets.push(controllerOne)
   controllerOne.send(JSON.stringify(protocol.controllerRegistration))
-  await waitFor(() => registry.getControllerConnections().some(
+  await waitFor(() => runtime.registry.getControllerConnections().some(
     connection => connection.controllerId === 'controller1'
   ))
 
@@ -110,7 +113,7 @@ test('rejects WebSocket upgrades outside the configured path', { timeout: 5000 }
   t.after(() => {
     runtime.wss.close()
     runtime.server.close()
-    registry.close()
+    runtime.registry.close()
   })
   const { port } = runtime.server.address()
   const ws = new WebSocket(`ws://127.0.0.1:${port}/wrong`)
