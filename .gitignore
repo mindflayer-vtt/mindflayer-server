@@ -59,3 +59,4 @@ dist
 *.provisioning.bin
 /firmware/*
 !/firmware/manifest.example.json
+.briefing/
