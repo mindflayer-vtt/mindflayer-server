@@ -9,7 +9,7 @@ const cbor = require('cbor')
 const { once } = require('events')
 const { startAll } = require('../src')
 const { calculateHmac } = require('../src/security/device-auth')
-const { TYPE } = require('../src/device/protocol')
+const { PROTOCOL_VERSION, TYPE } = require('../src/device/protocol')
 
 function next(ws) { return new Promise(resolve => ws.once('message', (data, isBinary) => resolve({ data, isBinary }))) }
 test('Foundry JSON translates through typed semantics to exact device CBOR and back', { timeout: 5000 }, async t => {
@@ -20,12 +20,12 @@ test('Foundry JSON translates through typed semantics to exact device CBOR and b
   t.after(() => { for (const ws of sockets) ws.terminate(); for (const side of [runtime.foundry, runtime.device]) { for (const ws of side.wss.clients) ws.terminate(); side.wss.close(); side.server.close() } runtime.foundry.registry.close() })
   const device = new WebSocket(`wss://127.0.0.1:${runtime.device.server.address().port}/device/v1`, { rejectUnauthorized: false }); sockets.push(device); await once(device, 'open')
   const challengeFrame = await next(device); assert.equal(challengeFrame.isBinary, true); const challenge = cbor.decodeFirstSync(challengeFrame.data)
-  device.send(cbor.encodeCanonical([TYPE.AUTH_RESPONSE, 'controller1', Buffer.from(calculateHmac(Buffer.from('11'.repeat(32), 'hex'), 'controller1', challenge[2]), 'hex')]))
-  await next(device); device.send(Buffer.from('830365312e322e33746d696e64666c617965722d6b65797061642d7631', 'hex'))
+  device.send(cbor.encodeCanonical([TYPE.AUTH_RESPONSE, PROTOCOL_VERSION, 'controller1', Buffer.from(calculateHmac(Buffer.from('11'.repeat(32), 'hex'), 'controller1', challenge[2]), 'hex')]))
+  await next(device); device.send(Buffer.from('84030265312e322e33746d696e64666c617965722d6b65797061642d7631', 'hex'))
   const foundry = new WebSocket(`ws://127.0.0.1:${runtime.foundry.server.address().port}/ws`); sockets.push(foundry); await once(foundry, 'open')
   const known = next(foundry); foundry.send(JSON.stringify({ type: 'registration', status: 'connected', receiver: true, players: [] })); assert.equal((await known).isBinary, false)
-  const key = next(foundry); device.send(Buffer.from('83040101', 'hex')); const relayed = await key
+  const key = next(foundry); device.send(Buffer.from('8404020101', 'hex')); const relayed = await key
   assert.equal(relayed.isBinary, false); assert.deepEqual(JSON.parse(relayed.data), { type: 'key-event', 'controller-id': 'controller1', key: 'W', state: 'down' })
   const configuration = next(device); foundry.send(JSON.stringify({ type: 'configuration', 'controller-id': 'controller1', led1: { r: 1, g: 2, b: 3 }, led2: { r: 4, g: 5, b: 6 } }))
-  const encoded = await configuration; assert.equal(encoded.isBinary, true); assert.equal(encoded.data.toString('hex'), '8705010203040506')
+  const encoded = await configuration; assert.equal(encoded.isBinary, true); assert.equal(encoded.data.toString('hex'), '880502010203040506')
 })

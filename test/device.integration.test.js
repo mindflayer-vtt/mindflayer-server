@@ -13,7 +13,7 @@ const { ensureDeviceTls } = require('../src/security/device-tls')
 const { DeviceStore } = require('../src/security/device-store')
 const { FirmwareRepository } = require('../src/firmware/repository')
 const { OtaTokens } = require('../src/firmware/tokens')
-const { TYPE } = require('../src/device/protocol')
+const { LEGACY_PROTOCOL_VERSION, PROTOCOL_VERSION, TYPE } = require('../src/device/protocol')
 
 function message(ws) { return new Promise((resolve, reject) => ws.once('message', (data, isBinary) => { try { assert.equal(isBinary, true); resolve(cbor.decodeFirstSync(data, { required: true })) } catch (error) { reject(error) } })) }
 function noMessage(ws, milliseconds=50) { return Promise.race([message(ws).then(() => false), new Promise(resolve => setTimeout(() => resolve(true), milliseconds))]) }
@@ -36,9 +36,9 @@ function close(runtime, ws) { if (ws) ws.terminate(); for (const client of runti
 async function authenticate(runtime, id = 'controller1', secret = '11'.repeat(32)) {
   const ws = await open(runtime)
   const challenge = await message(ws)
-  ws.send(cbor.encodeCanonical([TYPE.AUTH_RESPONSE, id, Buffer.from(calculateHmac(Buffer.from(secret, 'hex'), id, challenge[2]), 'hex')]))
+  ws.send(cbor.encodeCanonical([TYPE.AUTH_RESPONSE, PROTOCOL_VERSION, id, Buffer.from(calculateHmac(Buffer.from(secret, 'hex'), id, challenge[2]), 'hex')]))
   const accepted = await message(ws)
-  assert.deepEqual(accepted, [TYPE.AUTH_RESULT, 0, id])
+  assert.deepEqual(accepted, [TYPE.AUTH_RESULT, PROTOCOL_VERSION, 0, id])
   return { ws, challenge }
 }
 
@@ -85,14 +85,39 @@ test('authenticates a device, reports metadata, offers exact targeted firmware, 
   const ws = await open(runtime)
   try {
     const challenge = await message(ws)
+    ws.send(cbor.encodeCanonical([TYPE.AUTH_RESPONSE, PROTOCOL_VERSION, 'controller1', Buffer.from(calculateHmac(Buffer.from('11'.repeat(32), 'hex'), 'controller1', challenge[2]), 'hex')]))
+    assert.deepEqual(await message(ws), [TYPE.AUTH_RESULT, PROTOCOL_VERSION, 0, 'controller1'])
+    ws.send(cbor.encodeCanonical([TYPE.REGISTRATION, PROTOCOL_VERSION, '1.1.0', 'mindflayer-keypad-v1']))
+    const offer = await message(ws); assert.equal(offer[0], TYPE.UPDATE_AVAILABLE); assert.equal(offer[1], PROTOCOL_VERSION); assert.equal(offer[2], '1.2.0')
+    const base = `https://127.0.0.1:${runtime.server.address().port}`
+    assert.equal((await httpsGet(base + offer[5])).status, 401)
+    const response = await httpsGet(base + offer[5], { Authorization: `Bearer ${Buffer.from(offer[6]).toString('base64url')}` })
+    assert.equal(response.status, 200); assert.deepEqual(response.body, f.bytes)
+  } finally { close(runtime, ws) }
+})
+
+test('keeps legacy v1 devices connected long enough to receive their migration update', { timeout: 5000 }, async () => {
+  const f = fixture(); const runtime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') })
+  const ws = await open(runtime)
+  try {
+    const challenge = await message(ws)
     ws.send(cbor.encodeCanonical([TYPE.AUTH_RESPONSE, 'controller1', Buffer.from(calculateHmac(Buffer.from('11'.repeat(32), 'hex'), 'controller1', challenge[2]), 'hex')]))
     assert.deepEqual(await message(ws), [TYPE.AUTH_RESULT, 0, 'controller1'])
     ws.send(cbor.encodeCanonical([TYPE.REGISTRATION, '1.1.0', 'mindflayer-keypad-v1']))
-    const offer = await message(ws); assert.equal(offer[0], TYPE.UPDATE_AVAILABLE); assert.equal(offer[1], '1.2.0')
-    const base = `https://127.0.0.1:${runtime.server.address().port}`
-    assert.equal((await httpsGet(base + offer[4])).status, 401)
-    const response = await httpsGet(base + offer[4], { Authorization: `Bearer ${Buffer.from(offer[5]).toString('base64url')}` })
-    assert.equal(response.status, 200); assert.deepEqual(response.body, f.bytes)
+    const offer = await message(ws)
+    assert.equal(offer[0], TYPE.UPDATE_AVAILABLE)
+    assert.equal(offer[1], '1.2.0')
+    assert.equal(runtime.registry.connections.find(connection => connection.authenticatedDeviceId === 'controller1').deviceProtocolVersion, LEGACY_PROTOCOL_VERSION)
+  } finally { close(runtime, ws) }
+})
+
+test('rejects protocol downgrade after v2 authentication', { timeout: 5000 }, async () => {
+  const f = fixture(); const runtime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') })
+  const { ws } = await authenticate(runtime)
+  try {
+    ws.send(cbor.encodeCanonical([TYPE.KEY_EVENT, 1, 1]))
+    const [code] = await once(ws, 'close')
+    assert.equal(code, 1008)
   } finally { close(runtime, ws) }
 })
 
@@ -100,15 +125,15 @@ test('acknowledges only an authenticated registration at the accepted target ver
   const f = fixture(); const runtime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') })
   const { ws } = await authenticate(runtime)
   try {
-    ws.send(cbor.encodeCanonical([TYPE.REGISTRATION, '1.2.0', 'mindflayer-keypad-v1']))
-    assert.deepEqual(await message(ws), [TYPE.FIRMWARE_ACCEPTED, '1.2.0'])
+    ws.send(cbor.encodeCanonical([TYPE.REGISTRATION, PROTOCOL_VERSION, '1.2.0', 'mindflayer-keypad-v1']))
+    assert.deepEqual(await message(ws), [TYPE.FIRMWARE_ACCEPTED, PROTOCOL_VERSION, '1.2.0'])
   } finally { close(runtime, ws) }
 })
 
 test('does not acknowledge an unacceptable version or hardware', { timeout: 5000 }, async () => {
   for (const registration of [['1.2.0','other-hardware'],['9.9.9','mindflayer-keypad-v1']]) {
     const f=fixture(); const runtime=createDeviceServer({devicesFile:f.devicesFile,firmwareDir:f.firmwareDir,tlsDir:path.join(f.root,'tls')}); const {ws}=await authenticate(runtime)
-    try { ws.send(cbor.encodeCanonical([TYPE.REGISTRATION,...registration])); assert.equal(await noMessage(ws),true) } finally { close(runtime,ws) }
+    try { ws.send(cbor.encodeCanonical([TYPE.REGISTRATION,PROTOCOL_VERSION,...registration])); assert.equal(await noMessage(ws),true) } finally { close(runtime,ws) }
   }
 })
 
@@ -126,7 +151,7 @@ test('rollout selection emits no grant for no target, current target, wrong hard
     fs.writeFileSync(f.devicesFile, JSON.stringify(state))
     const runtime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') })
     const { ws } = await authenticate(runtime)
-    ws.send(cbor.encodeCanonical([TYPE.REGISTRATION, item.current, item.hardware]))
+    ws.send(cbor.encodeCanonical([TYPE.REGISTRATION, PROTOCOL_VERSION, item.current, item.hardware]))
     await new Promise(resolve => setImmediate(resolve))
     assert.equal(runtime.tokens.tokens.size, 0)
     close(runtime, ws)
@@ -136,16 +161,16 @@ test('rollout selection emits no grant for no target, current target, wrong hard
 test('rejects invalid, unknown, replayed, and unauthenticated device frames', { timeout: 10000 }, async () => {
   const f = fixture()
   for (const response of [
-    () => [TYPE.AUTH_RESPONSE, 'controller1', Buffer.alloc(32)],
-    () => [TYPE.AUTH_RESPONSE, 'unknown', Buffer.alloc(32)],
-    () => [TYPE.REGISTRATION, '1.0.0', 'mindflayer-keypad-v1']
+    () => [TYPE.AUTH_RESPONSE, PROTOCOL_VERSION, 'controller1', Buffer.alloc(32)],
+    () => [TYPE.AUTH_RESPONSE, PROTOCOL_VERSION, 'unknown', Buffer.alloc(32)],
+    () => [TYPE.REGISTRATION, PROTOCOL_VERSION, '1.0.0', 'mindflayer-keypad-v1']
   ]) {
     const runtime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') }); const ws = await open(runtime)
     const challenge = await message(ws); ws.send(cbor.encodeCanonical(response(challenge))); await once(ws, 'close'); close(runtime)
   }
   const firstRuntime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') }); const first = await open(firstRuntime)
   const oldChallenge = await message(first)
-  const replay = [TYPE.AUTH_RESPONSE, 'controller1', Buffer.from(calculateHmac(Buffer.from('11'.repeat(32), 'hex'), 'controller1', oldChallenge[2]), 'hex')]
+  const replay = [TYPE.AUTH_RESPONSE, PROTOCOL_VERSION, 'controller1', Buffer.from(calculateHmac(Buffer.from('11'.repeat(32), 'hex'), 'controller1', oldChallenge[2]), 'hex')]
   close(firstRuntime, first)
   const secondRuntime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') }); const second = await open(secondRuntime)
   await message(second); second.send(cbor.encodeCanonical(replay)); await once(second, 'close'); close(secondRuntime)

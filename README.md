@@ -3,7 +3,7 @@
 The server has two deliberately separate endpoints:
 
 - `http://0.0.0.0:8080` (`FOUNDRY_PORT`): browser/Foundry HTTP and WebSocket traffic, intended only for a browser-trusted reverse proxy.
-- `https://0.0.0.0:10443` (`DEVICE_PORT`): binary restricted-CBOR keypad WSS at `/device/v1` and authorized firmware downloads, using its own persistent self-signed TLS identity.
+- `https://0.0.0.0:10443` (`DEVICE_PORT`): versioned binary restricted-CBOR keypad WSS at `/device/v1` and authorized firmware downloads, using its own persistent self-signed TLS identity. Current keypads use explicit frame protocol v2; the server retains the bounded legacy-v1 codec needed to update deployed keypads.
 
 The reverse proxy remains outside this repository. Configure the Foundry module with its external reverse-proxy host, port and `/ws` path; it already constructs the appropriate external `wss://` URL.
 

@@ -52,7 +52,7 @@ function registerProtocolHandlers(registry, dispatcher) {
   })
   dispatcher.handlers.VTTConfigurationMessage.push((connection, message) => {
     registry.getControllerConnections().filter(conn => conn.controllerId === message['controller-id'])
-      .forEach(conn => conn.send(conn.deviceProtocol === 1 ? encodeConfiguration(message) : JSON.stringify(message), conn.deviceProtocol === 1 ? { binary: true } : undefined))
+      .forEach(conn => conn.send(conn.deviceProtocol === 1 ? encodeConfiguration(message, conn.deviceProtocolVersion) : JSON.stringify(message), conn.deviceProtocol === 1 ? { binary: true } : undefined))
   })
   dispatcher.handlers.VTTAmbilightMessage.push(require('./handlers/ambilight'))
 }
@@ -139,6 +139,7 @@ function createDeviceServer(options = {}) {
   const server = https.createServer(tls, app)
   const wss = attachWebSocket(server, '/device/v1', MAX_DEVICE_FRAME_SIZE, ws => {
     ws.deviceProtocol = 1
+    ws.deviceProtocolVersion = null
     ws.deviceAuthenticated = false
     ws.authChallenge = crypto.randomBytes(32)
     ws.send(encodeAuthChallenge(ws.authChallenge), { binary: true })
@@ -148,10 +149,11 @@ function createDeviceServer(options = {}) {
       try { message = decodeDeviceFrame(data) } catch { ws.close(1008, 'malformed device message'); return }
       if (!ws.deviceAuthenticated) {
         if (message.type !== 'auth-response') { ws.close(1008, 'authentication required'); return }
+        ws.deviceProtocolVersion = message.protocolVersion
         const device = store.get(message.deviceId)
         const expected = device && calculateHmacBytes(Buffer.from(device.secret, 'hex'), message.deviceId, ws.authChallenge)
         ws.authChallenge = null
-        if (!expected || !safeBytesEqual(message.hmac, expected)) { ws.send(encodeAuthResult(AUTH_STATUS.FAILED), { binary: true }); ws.close(1008, 'authentication failed'); return }
+        if (!expected || !safeBytesEqual(message.hmac, expected)) { ws.send(encodeAuthResult(AUTH_STATUS.FAILED, '', ws.deviceProtocolVersion), { binary: true }); ws.close(1008, 'authentication failed'); return }
         ws.deviceAuthenticated = true
         ws.authenticatedDeviceId = message.deviceId
         ws.offerUpdate = registration => {
@@ -163,12 +165,13 @@ function createDeviceServer(options = {}) {
           if (!device.allowDowngrade && current && compareVersions(target, current) <= 0) return
           const token = tokens.issue(ws.authenticatedDeviceId, release)
           const url = `/firmware/${encodeURIComponent(release.hardware)}/${encodeURIComponent(release.version)}`
-          ws.send(encodeUpdateAvailable(release, url, token), { binary: true })
+          ws.send(encodeUpdateAvailable(release, url, token, ws.deviceProtocolVersion), { binary: true })
         }
         registry.addConnection(ws)
-        ws.send(encodeAuthResult(AUTH_STATUS.OK, ws.authenticatedDeviceId), { binary: true })
+        ws.send(encodeAuthResult(AUTH_STATUS.OK, ws.authenticatedDeviceId, ws.deviceProtocolVersion), { binary: true })
         return
       }
+      if (message.protocolVersion !== ws.deviceProtocolVersion) { ws.close(1008, 'device protocol version changed'); return }
       try {
         if (message.type === 'registration') {
           const device = store.get(ws.authenticatedDeviceId)
@@ -178,7 +181,7 @@ function createDeviceServer(options = {}) {
             type: 'registration', 'controller-id': ws.authenticatedDeviceId, status: 'connected', receiver: false,
             firmware: message.firmware, hardware: message.hardware
           })
-          if (accepted) ws.send(encodeFirmwareAccepted(message.firmware), { binary: true })
+          if (accepted) ws.send(encodeFirmwareAccepted(message.firmware, ws.deviceProtocolVersion), { binary: true })
         }
         else if (message.type === 'key-event') dispatcher.dispatch(ws, {
           type: 'key-event', 'controller-id': ws.authenticatedDeviceId, key: message.key, state: message.state
