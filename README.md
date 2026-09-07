@@ -32,6 +32,8 @@ volumes:
 
 The image runs as the unprivileged `node` user. Ensure bind-mounted directories are writable by that UID where required. The image contains neither PlatformIO nor any firmware signing private key.
 
+Published container images support `linux/amd64`, `linux/arm64`, and `linux/s390x`. Node.js 24 does not provide the Alpine base image for 32-bit ARM, so `linux/arm/v6` and `linux/arm/v7` are not published.
+
 The image defaults persistent server identity and credentials to `/data`, expects firmware at `/firmware`, and declares `/data` as a volume. Its Docker health check verifies both `/healthz` on the Foundry HTTP listener and `/healthz` on the device HTTPS listener.
 
 ## Device TLS bootstrap
