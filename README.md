@@ -32,6 +32,8 @@ volumes:
 
 The image runs as the unprivileged `node` user. Ensure bind-mounted directories are writable by that UID where required. The image contains neither PlatformIO nor any firmware signing private key.
 
+The image defaults persistent server identity and credentials to `/data`, expects firmware at `/firmware`, and declares `/data` as a volume. Its Docker health check verifies both `/healthz` on the Foundry HTTP listener and `/healthz` on the device HTTPS listener.
+
 ## Device TLS bootstrap
 
 On first start the server creates `/data/tls/device-key.pem` (mode 0600) and a self-signed `/data/tls/device-cert.pem`. The certificate can be recreated while retaining the key; the private key is the durable server identity and must be backed up with the data volume. Extract the pinned public key with:
@@ -87,3 +89,5 @@ npm test
 npm audit
 npm start
 ```
+
+Commits on `main` are released with semantic-release. Conventional Commit types determine the next version, update `package.json`, `package-lock.json`, and `CHANGELOG.md`, create the Git tag and GitHub release, and supply matching semantic Docker tags and OCI version metadata.
