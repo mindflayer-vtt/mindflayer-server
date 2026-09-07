@@ -20,7 +20,6 @@ env:
   IMAGE_NAME: mindflayervtt/server
   IMAGE_TITLE: Mind Flayer WebSocket Server
   IMAGE_DESCRIPTION: WebSocket Server for Mind Flayer Foundry VTT module
-  APP_VERSION: 1.0
 
 jobs:
   # Run tests.
@@ -44,24 +43,65 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Audit production dependencies
+        run: npm audit --omit=dev
+
       - name: Build container
         run: |
           if [ -f docker-compose.test.yml ]; then
             docker compose --file docker-compose.test.yml build
             docker compose --file docker-compose.test.yml run sut
           else
-            docker build . --file Dockerfile
+            docker build --tag mindflayer-server:test . --file Dockerfile
+            bash .github/scripts/container-smoke.sh
           fi
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    outputs:
+      version: ${{ steps.semantic-release.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Create semantic release
+        id: semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release
 
   # Build images.
   build:
     runs-on: ubuntu-latest
 
-    needs: test
+    needs: [test, release]
+    if: always() && needs.test.result == 'success' && (needs.release.result == 'success' || needs.release.result == 'skipped')
 
     steps:
     - name: Checkout
       uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+
+    - name: Use released package metadata
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: |
+        git fetch origin main
+        git checkout --detach origin/main
 
     - name: Login to DockerHub
       if: github.event_name != 'pull_request'
@@ -83,18 +123,25 @@ jobs:
       id: prep
       run: |
         DOCKER_IMAGE=$IMAGE_NAME
-
-        # Strip git ref prefix from version
-        VERSION_FULL=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\)$,\1,')
-        VERSION_MINOR=$(echo "$VERSION_FULL" | sed 's,\.[^.]*$,,')
-        VERSION_MAJOR=$(echo "$VERSION_MINOR" | sed 's,\.[^.]*$,,')
-
-        # Use Docker `edge` tag convention and pr-<number> for pull requests
-        [ "$VERSION_FULL" == "main" ] && VERSION_FULL=edge
-        [ ${{ github.ref }} == refs/pull/* ] && VERSION_FULL=pr-${{ github.event.number }}
-
-        TAGS="${DOCKER_IMAGE}:${VERSION_FULL}"  
-        [ "$VERSION_FULL" != "edge" -a ${VERSION_FULL:0:3} != "pr-" ] && TAGS="$TAGS,${DOCKER_IMAGE}:${VERSION_MINOR},${DOCKER_IMAGE}:${VERSION_MAJOR},${DOCKER_IMAGE}:latest"
+        RELEASE_VERSION='${{ needs.release.outputs.version }}'
+        if [[ "${{ github.ref }}" == refs/pull/* ]]; then
+          VERSION_FULL="pr-${{ github.event.number }}"
+          TAGS="${DOCKER_IMAGE}:${VERSION_FULL}"
+        elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          VERSION_FULL="${{ github.ref_name }}"
+          VERSION_FULL="${VERSION_FULL#v}"
+          VERSION_MINOR="${VERSION_FULL%.*}"
+          VERSION_MAJOR="${VERSION_MINOR%.*}"
+          TAGS="${DOCKER_IMAGE}:${VERSION_FULL},${DOCKER_IMAGE}:${VERSION_MINOR},${DOCKER_IMAGE}:${VERSION_MAJOR},${DOCKER_IMAGE}:latest"
+        else
+          VERSION_FULL="${RELEASE_VERSION:-$(node -p "require('./package.json').version")}"
+          TAGS="${DOCKER_IMAGE}:edge"
+          if [[ -n "$RELEASE_VERSION" ]]; then
+            VERSION_MINOR="${RELEASE_VERSION%.*}"
+            VERSION_MAJOR="${VERSION_MINOR%.*}"
+            TAGS="$TAGS,${DOCKER_IMAGE}:${RELEASE_VERSION},${DOCKER_IMAGE}:${VERSION_MINOR},${DOCKER_IMAGE}:${VERSION_MAJOR},${DOCKER_IMAGE}:latest"
+          fi
+        fi
 
         echo "version=${VERSION_FULL}" >> "$GITHUB_OUTPUT"
         echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
@@ -117,4 +164,4 @@ jobs:
           org.opencontainers.image.source=${{ github.event.repository.html_url }}
           org.opencontainers.image.created=${{ steps.prep.outputs.created }}
           org.opencontainers.image.revision=${{ github.sha }}
-          org.opencontainers.image.version=$APP_VERSION
+          org.opencontainers.image.version=${{ steps.prep.outputs.version }}
