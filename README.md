@@ -65,6 +65,8 @@ npm run device:serial-provision -- provisioning/controller1.provisioning.bin /de
 
 The serial sender automatically performs the keypad's double-reset recovery sequence through FTDI RTS. Recovery boot leaves the physically shared GPIO3/RXD0 out of NeoPixel DMA mode, sends the validated envelope, waits for acknowledgement, and requires no button press.
 
+Serial runtime diagnostics default to disabled. Set `MINDFLAYER_SERIAL_DEBUG=true` while creating a bundle to enable them for that device; use `false` or omit the variable for silent normal operation. Provisioning acknowledgements remain available regardless of this setting.
+
 Add rollout metadata to the device entry when ready:
 
 ```json
