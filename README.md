@@ -1,4 +1,18 @@
+<div align="center">
+<img width="460" src=".github/foundryvtt-mindflayer-logo.png" alt="Mind Flayer">
+</div>
+
 # Mind Flayer server
+
+[![Docker CI and release](https://github.com/mindflayer-vtt/mindflayer-server/actions/workflows/docker-publish.yml/badge.svg?branch=main)](https://github.com/mindflayer-vtt/mindflayer-server/actions/workflows/docker-publish.yml)
+[![Docker Pulls](https://img.shields.io/docker/pulls/mindflayervtt/server)](https://hub.docker.com/r/mindflayervtt/server)
+[![GitHub Release](https://img.shields.io/github/v/release/mindflayer-vtt/mindflayer-server)](https://github.com/mindflayer-vtt/mindflayer-server/releases/latest)
+
+The [Docker workflow](https://github.com/mindflayer-vtt/mindflayer-server/actions/workflows/docker-publish.yml)
+runs tests, creates semantic releases, and publishes multi-platform images to
+[Docker Hub](https://hub.docker.com/r/mindflayervtt/server). Release builds publish
+the full version, minor, major, and `latest` tags; main-branch builds also publish
+`edge`.
 
 The server has two deliberately separate endpoints:
 
