@@ -1,3 +1,10 @@
+## [0.2.2](https://github.com/mindflayer-vtt/mindflayer-server/compare/v0.2.1...v0.2.2) (2026-09-10)
+
+
+### Bug Fixes
+
+* **container:** publish resolved labels and release revision ([54c579e](https://github.com/mindflayer-vtt/mindflayer-server/commit/54c579ef8b08718cf222637c7215fa242c4c3269))
+
 ## [0.2.1](https://github.com/mindflayer-vtt/mindflayer-server/compare/v0.2.0...v0.2.1) (2026-09-10)
 
 
