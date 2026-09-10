@@ -7,9 +7,7 @@
 .agents
 .gitignore
 .nvmrc
-LICENSE
 README.md
-CREDITS.md
 MODERNIZATION.md
 PRE_UPGRADE_BASELINE.md
 CHANGELOG.md
