@@ -1,3 +1,11 @@
+# [0.3.0](https://github.com/mindflayer-vtt/mindflayer-server/compare/v0.2.2...v0.3.0) (2026-09-10)
+
+
+### Features
+
+* **firmware:** automatically roll out verified stable releases ([a8663d1](https://github.com/mindflayer-vtt/mindflayer-server/commit/a8663d18c1459ab7db194ac18aa2860ff78b2bf7))
+* **firmware:** discover and verify GitHub release archives ([ec5316f](https://github.com/mindflayer-vtt/mindflayer-server/commit/ec5316f9bf7acb5ffd7a852fbb8c5109d6de4ee3))
+
 ## [0.2.2](https://github.com/mindflayer-vtt/mindflayer-server/compare/v0.2.1...v0.2.2) (2026-09-10)
 
 
