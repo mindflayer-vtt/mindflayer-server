@@ -101,6 +101,19 @@ Roll out to one keypad, verify its reconnect reports the target version, then ad
 
 ## Development
 
+### License
+
+The server is licensed under [GPL-3.0-only](LICENSE). Third-party dependencies
+retain their own licenses. Published containers include the project license and
+credits and declare the GPL license in their OCI metadata.
+
+The server's published branches and tags were rewritten on 2026-09-10 to make
+the project license consistently GPLv3 throughout history. Existing clones should
+be replaced with fresh clones after preserving local work; do not merge the old
+history back into the repository.
+
+### Commands
+
 ```sh
 npm ci
 npm test
