@@ -1,3 +1,11 @@
+## [0.2.1](https://github.com/mindflayer-vtt/mindflayer-server/compare/v0.2.0...v0.2.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **container:** include GPL notices in build context ([63d4f4a](https://github.com/mindflayer-vtt/mindflayer-server/commit/63d4f4abaa2fd84b36236ddfdc2db7876ca13345))
+* **license:** enforce GPL metadata and include container notices ([52e9926](https://github.com/mindflayer-vtt/mindflayer-server/commit/52e9926565a51b3cf72aa6892c5fd15416b4a5ff))
+
 # [0.2.0](https://github.com/mindflayer-vtt/mindflayer-server/compare/v0.1.1...v0.2.0) (2026-09-10)
 
 
