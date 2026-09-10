@@ -4,6 +4,25 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
+test("Docker labels resolve display values and the checked-out release revision", () => {
+  const workflow = fs.readFileSync(
+    path.join(__dirname, "../.github/workflows/docker-publish.yml"),
+    "utf8",
+  );
+  for (const label of [
+    "org.opencontainers.image.title=${{ env.IMAGE_TITLE }}",
+    "org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION }}",
+    "org.opencontainers.image.revision=${{ steps.prep.outputs.revision }}",
+  ]) {
+    assert(workflow.includes(label), `Missing resolved label: ${label}`);
+  }
+  assert(
+    workflow.includes(
+      'echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"',
+    ),
+  );
+});
+
 test("project license text and root package metadata remain GPLv3", () => {
   const root = path.resolve(__dirname, "..");
   const license = fs.readFileSync(path.join(root, "LICENSE"));
