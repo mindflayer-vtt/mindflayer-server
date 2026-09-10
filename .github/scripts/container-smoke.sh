@@ -6,6 +6,7 @@ cleanup() { docker rm -f "$container" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 docker run --rm --detach --name "$container" \
+  --env MINDFLAYER_FIRMWARE_AUTO_UPDATE=false \
   --publish 127.0.0.1:18080:8080 \
   --publish 127.0.0.1:18443:10443 \
   mindflayer-server:test >/dev/null

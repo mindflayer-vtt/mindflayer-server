@@ -7,11 +7,15 @@ class OtaTokens {
     this.tokens = new Map();
   }
   issue(deviceId, release) {
+    const now = this.now();
+    for (const [token, grant] of this.tokens) {
+      if (grant.expires <= now) this.tokens.delete(token);
+    }
     const token = crypto.randomBytes(32).toString("base64url");
     this.tokens.set(token, {
       deviceId,
       release,
-      expires: this.now() + this.lifetimeMs,
+      expires: now + this.lifetimeMs,
       uses: 2,
     });
     return token;

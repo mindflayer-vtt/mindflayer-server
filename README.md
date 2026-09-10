@@ -48,7 +48,7 @@ The image runs as the unprivileged `node` user. Ensure bind-mounted directories 
 
 Published container images support `linux/amd64`, `linux/arm64`, and `linux/s390x`. Node.js 24 does not provide the Alpine base image for 32-bit ARM, so `linux/arm/v6` and `linux/arm/v7` are not published.
 
-The image defaults persistent server identity and credentials to `/data`, expects firmware at `/firmware`, and declares `/data` as a volume. Its Docker health check verifies both `/healthz` on the Foundry HTTP listener and `/healthz` on the device HTTPS listener.
+The image defaults persistent server identity, credentials, and the verified firmware cache to `/data`, accepts optional manually managed firmware at `/firmware`, and declares `/data` as a volume. The read-only `/firmware` mount is unnecessary for automatic updates. Its Docker health check verifies both `/healthz` on the Foundry HTTP listener and `/healthz` on the device HTTPS listener.
 
 ## Device TLS bootstrap
 
@@ -81,7 +81,13 @@ The serial sender automatically performs the keypad's double-reset recovery sequ
 
 Serial runtime diagnostics default to disabled. Set `MINDFLAYER_SERIAL_DEBUG=true` while creating a bundle to enable them for that device; use `false` or omit the variable for silent normal operation. Provisioning acknowledgements remain available regardless of this setting.
 
-Add rollout metadata to the device entry when ready:
+Connected keypads **automatically install newer stable verified releases** by default,
+including releases discovered while they are already connected. Installation
+reboots the keypad and preserves provisioning. See [firmware updates](docs/firmware-updates.md)
+for verification, polling, opt-outs, and offline operation.
+
+To pin a keypad instead, add rollout metadata to its entry in `devices.json` and
+restart the server:
 
 ```json
 {
@@ -91,13 +97,37 @@ Add rollout metadata to the device entry when ready:
 }
 ```
 
-No target means no update. Equal versions mean no update. Downgrades are rejected unless explicitly enabled. Authenticated devices receive short-lived, device-bound opaque download grants in an HTTP `Authorization: Bearer` header.
+Without a target, the newest verified stable release is selected unless the entry
+has `"autoUpdate": false`. A target takes precedence over automatic selection and
+must exist in the verified cache or manual repository. Equal versions mean no
+update. Automatic downgrades are never offered; only an explicit target with
+`"allowDowngrade": true` permits one. Authenticated devices receive short-lived,
+device-bound opaque download grants in an HTTP `Authorization: Bearer` header.
 
 ## Firmware repository
 
-The server only accepts prebuilt signed firmware; it never compiles or signs it. Copy the signed binary into the read-only firmware mount and create `manifest.json` following `firmware/manifest.example.json`. Each release declares schema version, hardware ID, semantic version, relative artifact path, byte size and SHA-256. Startup rejects invalid versions, missing or outside files, traversal, and size/hash mismatches. The SHA-256 is repository integrity metadata; the independent ESP8266 signature is what authorizes installation.
+The server downloads the keypad release archive from GitHub and verifies its
+RSA-2048/SHA-256 signature against the bundled production public key before
+caching or offering it. It never compiles or signs firmware and needs no signing
+private key. The keypad independently verifies the signature before installation.
 
-Roll out to one keypad, verify its reconnect reports the target version, then add targets for further devices. After HMAC authentication, a registration that reports the configured target version receives restricted-CBOR `FIRMWARE_ACCEPTED`. This is distinct from authentication: it tells a temporary rBoot candidate that the server observed and accepted its semantic version/session, allowing the keypad's complete health gate to promote it. A registration at another version may receive an update offer but never the acceptance needed to promote that version. The server never knows or controls rBoot slot numbers.
+For an explicit manual/offline rollout, copy a trusted signed binary into the
+read-only firmware mount and create `manifest.json` following
+`firmware/manifest.example.json`. Each release declares schema version, hardware
+ID, semantic version, relative artifact path, byte size and SHA-256. Startup
+rejects invalid versions, missing or outside files, traversal, and size/hash
+mismatches. Unlike automatic imports, this operator-managed path checks repository
+integrity, not the RSA signature; installation still requires the keypad's
+independent signature verification. Manual releases require an explicit device
+target and are never automatically selected as the latest release.
+
+After HMAC authentication, an unpinned registration receives restricted-CBOR
+`FIRMWARE_ACCEPTED` for its reported version; a pinned device receives it only for
+the available configured target. This is distinct from authentication: it allows
+the temporary rBoot candidate's complete health gate to promote it. Acceptance
+precedes any newer update offer, so discovering another release cannot prevent
+the returning candidate's health handshake. The server never knows or controls
+rBoot slot numbers.
 
 ## Development
 

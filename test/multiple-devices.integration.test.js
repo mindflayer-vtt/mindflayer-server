@@ -42,6 +42,7 @@ test(
     ];
     assert.notEqual(credentials[0].secret, credentials[1].secret);
     const runtime = startAll({
+      autoFirmwareUpdates: false,
       host: "127.0.0.1",
       deviceHost: "127.0.0.1",
       foundryPort: 0,
