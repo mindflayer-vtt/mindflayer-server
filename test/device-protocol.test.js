@@ -49,7 +49,7 @@ test('restricted decoder rejects malformed and out-of-profile CBOR deterministic
     cbor.encodeCanonical([TYPE.KEY_EVENT, PROTOCOL_VERSION, 1, 1, 1]), cbor.encodeCanonical([TYPE.KEY_EVENT, PROTOCOL_VERSION, 'W', 1]),
     cbor.encodeCanonical([TYPE.KEY_EVENT, PROTOCOL_VERSION, -1, 1]), cbor.encodeCanonical([TYPE.KEY_EVENT, PROTOCOL_VERSION, 256, 1]),
     cbor.encodeCanonical([TYPE.KEY_EVENT, PROTOCOL_VERSION, [], 1]), cbor.encodeCanonical([TYPE.KEY_EVENT, PROTOCOL_VERSION, {}, 1]),
-    cbor.encodeCanonical([TYPE.KEY_EVENT, 0, 1, 1]), cbor.encodeCanonical([TYPE.KEY_EVENT, 3, 1, 1]),
+    cbor.encodeCanonical([TYPE.KEY_EVENT, 0, 1, 1]), cbor.encodeCanonical([TYPE.KEY_EVENT, 4, 1, 1]),
     cbor.encodeCanonical([TYPE.AUTH_RESPONSE, PROTOCOL_VERSION, 'a\0b', Buffer.alloc(32)]),
     Buffer.concat([Buffer.from(fixtures.keyDown, 'hex'), Buffer.from([0x00])]),
     Buffer.from([0x83, 0x01, 0x78, 0x20, 0x61]), Buffer.from([0x83, 0x01, 0x58, 0x20, 0x00])

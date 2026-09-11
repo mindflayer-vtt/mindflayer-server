@@ -1,0 +1,15 @@
+# Private installation-worker commands
+
+These commands support Elderbrain's installation worker; they are not public HTTP APIs or a complete installation workflow.
+
+`node scripts/prepare-installation.js` takes bounded JSON on private stdin: base64 `sectorA` and `sectorB` (4096 bytes each), `settings` containing `ssid`, `psk`, `serverHost`, `serverPort`, and optional boolean `adopt`. It reads the local device store and TLS certificate. Its stdout contains a **secret-bearing** plan: the provisioning envelope, its SHA-256 digest, the device ID and any new credential. Store this only in the root-private installation journal. Never send it to workflow logs or public job results.
+
+Local credentials and identity are preserved. A foreign keypad requires explicit adoption and receives a fresh identity. Damaged/unrecognized provisioning records require recovery; they are not silently treated as blank flash.
+
+Before serial delivery, persist the plan and pass its `newCredential` (when non-null) to `node scripts/register-installation.js` over private stdin. Registration is idempotent for the same ID and secret, but refuses to replace different credentials. Successful stdout contains only the registered ID and state. New authentications reload the store, so no server restart is required. The worker must still verify authenticated firmware registration and the expected configuration digest after serial delivery.
+
+Credential writes use an exclusive `devices.json.lock`, reload under that lock, and fsync the replacement file and directory. Cooperating writers cannot overwrite each other's additions. Do not edit `devices.json` concurrently using unrelated tools. A crashed writer may leave the lock behind: stop credential-writing jobs, establish that no writer remains active (including inside containers), retain a private backup, and inspect the store before an administrator removes the stale lock. Never remove a lock based only on its age or a PID from a different PID namespace. Retrying the saved installation plan will not replace an existing secret.
+
+These commands do not download firmware, flash USB devices, or claim installation completion. The host worker must enforce release verification, hardware checks, sector backups, adoption consent, private journal storage and online confirmation.
+
+`node scripts/verify-installation.js` takes bounded JSON on stdin with `id`, `firmware`, `digest` and `notBefore` (the host's Unix timestamp in milliseconds immediately before serial provisioning). It listens to the local server's receiver connection for up to two minutes. Success requires authenticated matching hardware/firmware/configuration and a server-recorded `configurationVerifiedAt` at or after `notBefore`; stale snapshots do not count. The timestamp is assigned only when the server accepts a nonce-bound device configuration report, never taken from a browser payload. Stdout contains only the verified device metadata, not credentials. Connection loss or timeout fails verification; it does not declare the installation successful.

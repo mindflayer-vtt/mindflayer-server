@@ -30,6 +30,8 @@ test("host provisioning encoder matches the independent firmware fixture exactly
   });
   assert.equal(encoded.toString("hex"), fixture);
   assert.equal(encoded.length, 417);
+  assert.equal(require('node:crypto').createHash('sha256').update(encoded).digest('hex'),
+    'f9e0227920817d77cc79be1044d8197ac5be4f47b045ff18ee88ef041c2764b5');
   assert.equal(verifyEnvelope(encoded), true);
 });
 test("host CRC uses CRC-32/ISO-HDLC and envelope corruption is rejected", () => {

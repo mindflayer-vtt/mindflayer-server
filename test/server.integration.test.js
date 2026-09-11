@@ -59,7 +59,8 @@ test('relays the complete controller protocol over real WebSocket connections', 
   const knownController = nextJson(receiver)
   receiver.send(JSON.stringify(protocol.receiverRegistration))
   assert.deepEqual(await knownController, {
-    type: 'registration', 'controller-id': 'controller1', status: 'connected', receiver: false
+    type: 'registration', 'controller-id': 'controller1', status: 'connected', receiver: false,
+    deviceAuthenticated: false, firmware: null, hardware: null
   })
 
   const controllerTwo = await connect(url)
@@ -69,7 +70,8 @@ test('relays the complete controller protocol over real WebSocket connections', 
     type: 'registration', 'controller-id': 'controller2', status: 'connected', receiver: false
   }))
   assert.deepEqual(await newController, {
-    type: 'registration', 'controller-id': 'controller2', status: 'connected', receiver: false
+    type: 'registration', 'controller-id': 'controller2', status: 'connected', receiver: false,
+    deviceAuthenticated: false, firmware: null, hardware: null
   })
 
   const keyEvent = protocol.keyEvent
@@ -103,7 +105,8 @@ test('relays the complete controller protocol over real WebSocket connections', 
   controllerTwo.close()
   await once(controllerTwo, 'close')
   assert.deepEqual(await disconnected, {
-    type: 'registration', 'controller-id': 'controller2', status: 'disconnected', receiver: false
+    type: 'registration', 'controller-id': 'controller2', status: 'disconnected', receiver: false,
+    deviceAuthenticated: false, firmware: null, hardware: null
   })
 })
 

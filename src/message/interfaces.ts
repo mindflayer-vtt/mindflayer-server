@@ -19,7 +19,7 @@ export interface VTTPlayer {
 }
 
 export interface VTTMessage {
-  type: "key-event" | "registration" | "configuration" | "keyboard-login" | "ambilight"
+  type: "key-event" | "registration" | "configuration" | "keyboard-login" | "ambilight" | "configuration-state" | "led-state"
 }
 
 export interface VTTKeyEventMessage extends VTTMessage {
@@ -35,6 +35,30 @@ export interface VTTRegistrationMessage extends VTTMessage {
   status: "connected" | "disconnected"
   receiver: boolean
   players: VTTPlayer[] | undefined
+  /** Server-derived authentication evidence, not a client-provided assertion. */
+  deviceAuthenticated?: boolean
+  firmware?: string | null
+  hardware?: string | null
+  configurationDigest?: string
+  configurationVerifiedAt?: number
+  appliedLeds?: { led1: RGBColor; led2: RGBColor } | null
+}
+
+/** Server-derived state; null means a command is pending or unconfirmed. */
+export interface VTTLedStateMessage extends VTTMessage {
+  type: "led-state"
+  "controller-id": string
+  deviceAuthenticated: true
+  appliedLeds: { led1: RGBColor; led2: RGBColor } | null
+}
+
+/** Server-only event emitted after an authenticated nonce-matched device report. */
+export interface VTTConfigurationStateMessage extends VTTMessage {
+  type: "configuration-state"
+  "controller-id": string
+  deviceAuthenticated: true
+  configurationDigest: string
+  configurationVerifiedAt: number
 }
 
 export interface VTTConfigurationMessage extends VTTMessage {

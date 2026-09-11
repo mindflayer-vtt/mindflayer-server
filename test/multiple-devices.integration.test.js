@@ -209,6 +209,9 @@ test(
       "controller-id": "keypad6",
       status: "disconnected",
       receiver: false,
+      deviceAuthenticated: true,
+      firmware: "0.0.3-hwtest.1",
+      hardware: "mindflayer-keypad-v1",
     });
     key(two, 10, true);
     assert.deepEqual(await foundry.next(), {

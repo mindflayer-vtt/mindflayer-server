@@ -20,7 +20,10 @@ const {
   encodeAuthChallenge,
   encodeAuthResult,
   encodeConfiguration,
+  encodeLedCommand,
   encodeFirmwareAccepted,
+  encodeConfigurationQuery,
+  CONFIGURATION_PROTOCOL_VERSION,
 } = require("./device/protocol");
 const { DeviceStore } = require("./security/device-store");
 const { ensureDeviceTls } = require("./security/device-tls");
@@ -35,6 +38,20 @@ const DEFAULT_FOUNDRY_PORT = 8080;
 const DEFAULT_DEVICE_PORT = 10443;
 const DEFAULT_PORT = DEFAULT_DEVICE_PORT;
 const MAX_FOUNDRY_FRAME_SIZE = 64 * 1024;
+
+function deviceMetadata(connection) {
+  // This trust label is derived from the server-side HMAC handshake, never
+  // copied from an unauthenticated Foundry/browser registration payload.
+  const authenticated = connection.deviceAuthenticated === true;
+  return {
+    deviceAuthenticated: authenticated,
+    firmware: authenticated ? connection.firmwareVersion || null : null,
+    hardware: authenticated ? connection.hardware || null : null,
+    ...(authenticated && connection.appliedLeds ? { appliedLeds: connection.appliedLeds } : {}),
+    ...(authenticated && connection.configurationDigest ? { configurationDigest: connection.configurationDigest,
+      configurationVerifiedAt: connection.configurationVerifiedAt } : {}),
+  };
+}
 
 function registerProtocolHandlers(registry, dispatcher) {
   if (!registry.attach(dispatcher)) return;
@@ -53,8 +70,10 @@ function registerProtocolHandlers(registry, dispatcher) {
     }
     connection.receiver = message.receiver;
     connection.controllerId = message["controller-id"];
-    connection.firmwareVersion = message.firmware;
-    connection.hardware = message.hardware;
+    if (message.status !== "disconnected") {
+      connection.firmwareVersion = message.firmware;
+      connection.hardware = message.hardware;
+    }
     if (connection.receiver) {
       connection.players = message.players || [];
       registry.getControllerConnections().forEach((conn) =>
@@ -64,6 +83,7 @@ function registerProtocolHandlers(registry, dispatcher) {
             "controller-id": conn.controllerId,
             status: "connected",
             receiver: false,
+            ...deviceMetadata(conn),
           }),
         ),
       );
@@ -78,6 +98,7 @@ function registerProtocolHandlers(registry, dispatcher) {
             "controller-id": connection.controllerId,
             status: message.status,
             receiver: false,
+            ...deviceMetadata(connection),
           }),
         ),
       );
@@ -87,14 +108,26 @@ function registerProtocolHandlers(registry, dispatcher) {
     registry
       .getControllerConnections()
       .filter((conn) => conn.controllerId === message["controller-id"])
-      .forEach((conn) =>
+      .forEach((conn) => {
+        if (conn.deviceProtocol === 1 && conn.deviceProtocolVersion === CONFIGURATION_PROTOCOL_VERSION) {
+          const nonce = crypto.randomBytes(32);
+          const encoded = encodeLedCommand(message, nonce);
+          const colour = value => ({ r: value.r, g: value.g, b: value.b });
+          conn.pendingLeds = { nonce, colours: { led1: colour(message.led1), led2: colour(message.led2) } };
+          conn.appliedLeds = null;
+          registry.getReceiverConnections().forEach(receiver => receiver.send(JSON.stringify({
+            type: "led-state", "controller-id": conn.controllerId, deviceAuthenticated: true, appliedLeds: null,
+          })));
+          conn.send(encoded, { binary: true });
+          return;
+        }
         conn.send(
           conn.deviceProtocol === 1
             ? encodeConfiguration(message, conn.deviceProtocolVersion)
             : JSON.stringify(message),
           conn.deviceProtocol === 1 ? { binary: true } : undefined,
-        ),
-      );
+        );
+      });
   });
   dispatcher.handlers.VTTAmbilightMessage.push(require("./handlers/ambilight"));
 }
@@ -105,6 +138,10 @@ function createFoundryApp(registry = new ConnectionRegistry()) {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   app.get("/healthz", (_req, res) => res.json({ status: "ok" }));
+  app.get("/api/capabilities", (_req, res) => res.json({
+    deviceProtocolVersions: [1, 2, CONFIGURATION_PROTOCOL_VERSION],
+    configurationProof: "sha256-canonical-envelope-v2",
+  }));
   app.post("/api/players/register", (req, res) => {
     res.end();
     const data = JSON.stringify({
@@ -283,7 +320,16 @@ function createDeviceServer(options = {}) {
             return;
           }
           ws.deviceProtocolVersion = message.protocolVersion;
-          const device = store.get(message.deviceId);
+          let device;
+          try {
+            // Newly registered installation credentials become usable without
+            // disconnecting other keypads. Corrupt/unavailable state fails closed.
+            if (store.reload) store.reload();
+            device = store.get(message.deviceId);
+          } catch {
+            ws.close(1011, "device credentials unavailable");
+            return;
+          }
           const expected =
             device &&
             calculateHmacBytes(
@@ -325,6 +371,10 @@ function createDeviceServer(options = {}) {
         }
         try {
           if (message.type === "registration") {
+            ws.pendingLeds = null;
+            ws.appliedLeds = null;
+            ws.configurationDigest = null;
+            ws.configurationVerifiedAt = null;
             const device = store.get(ws.authenticatedDeviceId);
             const accepted =
               !device.targetVersion ||
@@ -348,7 +398,34 @@ function createDeviceServer(options = {}) {
               );
             // A temporary candidate must see its health acknowledgement before
             // another update offer can make it close WSS for an OTA download.
+            if (ws.deviceProtocolVersion === CONFIGURATION_PROTOCOL_VERSION) {
+              ws.configurationChallenge = crypto.randomBytes(32);
+              ws.send(encodeConfigurationQuery(ws.configurationChallenge), { binary: true });
+            }
             ws.offerUpdate(message);
+          } else if (message.type === "led-applied") {
+            // Older acknowledgements can legitimately arrive after another
+            // command superseded them. They must not confirm the newer state.
+            if (!ws.controllerId || !ws.pendingLeds || !safeBytesEqual(message.nonce, ws.pendingLeds.nonce)) return;
+            ws.appliedLeds = ws.pendingLeds.colours;
+            ws.pendingLeds = null;
+            registry.getReceiverConnections().forEach(receiver => receiver.send(JSON.stringify({
+              type: "led-state", "controller-id": ws.authenticatedDeviceId,
+              deviceAuthenticated: true, appliedLeds: ws.appliedLeds,
+            })));
+          } else if (message.type === "configuration-report") {
+            if (!ws.controllerId || !ws.configurationChallenge || !safeBytesEqual(message.nonce, ws.configurationChallenge)) {
+              ws.close(1008, "unexpected configuration report");
+              return;
+            }
+            ws.configurationChallenge = null;
+            ws.configurationDigest = message.digest.toString("hex");
+            ws.configurationVerifiedAt = Date.now();
+            registry.getReceiverConnections().forEach((receiver) => receiver.send(JSON.stringify({
+              type: "configuration-state", "controller-id": ws.authenticatedDeviceId,
+              deviceAuthenticated: true, configurationDigest: ws.configurationDigest,
+              configurationVerifiedAt: ws.configurationVerifiedAt,
+            })));
           } else if (message.type === "key-event")
             dispatcher.dispatch(ws, {
               type: "key-event",

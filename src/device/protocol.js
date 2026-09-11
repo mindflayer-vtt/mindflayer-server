@@ -4,6 +4,7 @@ const MAX_DEVICE_FRAME_SIZE = 512
 const AUTH_CHALLENGE_VERSION = 1
 const LEGACY_PROTOCOL_VERSION = 1
 const PROTOCOL_VERSION = 2
+const CONFIGURATION_PROTOCOL_VERSION = 3
 const TYPE = Object.freeze({
   AUTH_CHALLENGE: 0,
   AUTH_RESPONSE: 1,
@@ -12,7 +13,11 @@ const TYPE = Object.freeze({
   KEY_EVENT: 4,
   CONFIGURATION: 5,
   UPDATE_AVAILABLE: 6,
-  FIRMWARE_ACCEPTED: 7
+  FIRMWARE_ACCEPTED: 7,
+  CONFIGURATION_QUERY: 8,
+  CONFIGURATION_REPORT: 9,
+  LED_COMMAND: 10,
+  LED_APPLIED: 11
 })
 const AUTH_STATUS = Object.freeze({ OK: 0, FAILED: 1 })
 const ACTION = Object.freeze({ UP: 0, DOWN: 1 })
@@ -51,8 +56,8 @@ function encodeAuthChallenge(challenge) {
 }
 
 function fields(type, version, values) {
-  assert(version === LEGACY_PROTOCOL_VERSION || version === PROTOCOL_VERSION, 'Unsupported device protocol version')
-  return version === PROTOCOL_VERSION ? [type, version, ...values] : [type, ...values]
+  assert([LEGACY_PROTOCOL_VERSION, PROTOCOL_VERSION, CONFIGURATION_PROTOCOL_VERSION].includes(version), 'Unsupported device protocol version')
+  return version !== LEGACY_PROTOCOL_VERSION ? [type, version, ...values] : [type, ...values]
 }
 
 function encodeAuthResult(status, deviceId = '', version = PROTOCOL_VERSION) {
@@ -64,6 +69,12 @@ function encodeConfiguration(message, version = PROTOCOL_VERSION) {
   assert(message && message.type === 'configuration', 'Invalid configuration')
   const values = [message.led1?.r, message.led1?.g, message.led1?.b, message.led2?.r, message.led2?.g, message.led2?.b]
   return encode(fields(TYPE.CONFIGURATION, version, values.map((value, index) => uint(value, 255, `LED channel ${index}`))))
+}
+function encodeLedCommand(message, nonce) {
+  assert(message && message.type === 'configuration', 'Invalid configuration')
+  const values = [message.led1?.r, message.led1?.g, message.led1?.b, message.led2?.r, message.led2?.g, message.led2?.b]
+  return encode([TYPE.LED_COMMAND, CONFIGURATION_PROTOCOL_VERSION, bytes(nonce, 32, 'LED nonce'),
+    ...values.map((value, index) => uint(value, 255, `LED channel ${index}`))])
 }
 
 function encodeUpdateAvailable(release, url, token, version = PROTOCOL_VERSION) {
@@ -80,6 +91,10 @@ function encodeUpdateAvailable(release, url, token, version = PROTOCOL_VERSION) 
 
 function encodeFirmwareAccepted(firmwareVersion, version = PROTOCOL_VERSION) {
   return encode(fields(TYPE.FIRMWARE_ACCEPTED, version, [text(firmwareVersion, 47, 'firmware version')]))
+}
+
+function encodeConfigurationQuery(nonce) {
+  return encode([TYPE.CONFIGURATION_QUERY, CONFIGURATION_PROTOCOL_VERSION, 1, bytes(nonce, 32, 'configuration nonce')])
 }
 
 function readHead(input, state, expectedMajor) {
@@ -136,25 +151,34 @@ function decodeDeviceFrame(data) {
   const state = { offset: 0 }
   const arity = readHead(input, state, 4)
   const type = readUint(input, state, 255, 'message type')
-  const version = arity === 4 ? readUint(input, state, 255, 'protocol version') : LEGACY_PROTOCOL_VERSION
-  assert(version === LEGACY_PROTOCOL_VERSION || version === PROTOCOL_VERSION, 'Unsupported device protocol version')
+  const version = arity === 4 || type === TYPE.LED_APPLIED ? readUint(input, state, 255, 'protocol version') : LEGACY_PROTOCOL_VERSION
+  assert([LEGACY_PROTOCOL_VERSION, PROTOCOL_VERSION, CONFIGURATION_PROTOCOL_VERSION].includes(version), 'Unsupported device protocol version')
   let message
   switch (type) {
     case TYPE.AUTH_RESPONSE:
-      assert(arity === (version === PROTOCOL_VERSION ? 4 : 3), 'Incorrect auth response arity')
+      assert(arity === (version !== LEGACY_PROTOCOL_VERSION ? 4 : 3), 'Incorrect auth response arity')
       message = { type: 'auth-response', deviceId: readText(input, state, 1, 64, 'device ID'), hmac: Buffer.from(readBytes(input, state, 32, 32, 'HMAC')) }
       break
     case TYPE.REGISTRATION:
-      assert(arity === (version === PROTOCOL_VERSION ? 4 : 3), 'Incorrect registration arity')
+      assert(arity === (version !== LEGACY_PROTOCOL_VERSION ? 4 : 3), 'Incorrect registration arity')
       message = { type: 'registration', firmware: readText(input, state, 1, 47, 'firmware version'), hardware: readText(input, state, 1, 64, 'hardware ID') }
       break
     case TYPE.KEY_EVENT: {
-      assert(arity === (version === PROTOCOL_VERSION ? 4 : 3), 'Incorrect key-event arity')
+      assert(arity === (version !== LEGACY_PROTOCOL_VERSION ? 4 : 3), 'Incorrect key-event arity')
       const key = readUint(input, state, KEYS.length - 1, 'key code')
       const action = readUint(input, state, 1, 'key action')
       message = { type: 'key-event', key: KEYS[key], state: action === ACTION.DOWN ? 'down' : 'up' }
       break
     }
+    case TYPE.CONFIGURATION_REPORT:
+      assert(version === CONFIGURATION_PROTOCOL_VERSION && arity === 4, 'Configuration reports require protocol 3')
+      message = { type: 'configuration-report', nonce: Buffer.from(readBytes(input, state, 32, 32, 'configuration nonce')),
+        digest: Buffer.from(readBytes(input, state, 32, 32, 'configuration digest')) }
+      break
+    case TYPE.LED_APPLIED:
+      assert(version === CONFIGURATION_PROTOCOL_VERSION && arity === 3, 'LED acknowledgements require protocol 3')
+      message = { type: 'led-applied', nonce: Buffer.from(readBytes(input, state, 32, 32, 'LED nonce')) }
+      break
     default: throw new Error('Unknown or server-only device message type')
   }
   assert(state.offset === input.length, 'Trailing CBOR data')
@@ -165,5 +189,5 @@ function decodeDeviceFrame(data) {
 module.exports = {
   ACTION, AUTH_CHALLENGE_VERSION, AUTH_STATUS, KEYS, LEGACY_PROTOCOL_VERSION, MAX_DEVICE_FRAME_SIZE, PROTOCOL_VERSION, TYPE,
   decodeDeviceFrame, encodeAuthChallenge, encodeAuthResult, encodeConfiguration, encodeUpdateAvailable,
-  encodeFirmwareAccepted
+  encodeFirmwareAccepted, encodeConfigurationQuery, CONFIGURATION_PROTOCOL_VERSION, encodeLedCommand
 }

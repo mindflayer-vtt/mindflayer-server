@@ -18,7 +18,7 @@ const { LEGACY_PROTOCOL_VERSION, PROTOCOL_VERSION, TYPE } = require('../src/devi
 function message(ws) { return new Promise((resolve, reject) => ws.once('message', (data, isBinary) => { try { assert.equal(isBinary, true); resolve(cbor.decodeFirstSync(data, { required: true })) } catch (error) { reject(error) } })) }
 function noMessage(ws, milliseconds=50) { return Promise.race([message(ws).then(() => false), new Promise(resolve => setTimeout(() => resolve(true), milliseconds))]) }
 async function open(runtime) {
-  runtime.server.listen(0, '127.0.0.1'); await once(runtime.server, 'listening')
+  if (!runtime.server.listening) { runtime.server.listen(0, '127.0.0.1'); await once(runtime.server, 'listening') }
   const ws = new WebSocket(`wss://127.0.0.1:${runtime.server.address().port}/device/v1`, { rejectUnauthorized: false })
   await once(ws, 'open'); return ws
 }
@@ -41,6 +41,26 @@ async function authenticate(runtime, id = 'controller1', secret = '11'.repeat(32
   assert.deepEqual(accepted, [TYPE.AUTH_RESULT, PROTOCOL_VERSION, 0, id])
   return { ws, challenge }
 }
+
+test('newly registered credentials authenticate without restarting the device server', async t => {
+  const f = fixture();
+  const runtime = createDeviceServer({ devicesFile: f.devicesFile, firmwareDir: f.firmwareDir, tlsDir: path.join(f.root, 'tls') });
+  t.after(() => { close(runtime); fs.rmSync(f.root, { recursive: true, force: true }); });
+  runtime.server.listen(0, '127.0.0.1'); await once(runtime.server, 'listening');
+  const existing = await authenticate(runtime);
+  new DeviceStore(f.devicesFile).register('new-keypad', '22'.repeat(32));
+  const added = await authenticate(runtime, 'new-keypad', '22'.repeat(32));
+  assert.equal(existing.ws.readyState, WebSocket.OPEN);
+  fs.writeFileSync(f.devicesFile, 'invalid credentials file');
+  const rejected = await open(runtime);
+  const challenge = await message(rejected);
+  const closed = once(rejected, 'close');
+  rejected.send(cbor.encodeCanonical([TYPE.AUTH_RESPONSE, PROTOCOL_VERSION, 'new-keypad', Buffer.from(calculateHmac(Buffer.from('22'.repeat(32), 'hex'), 'new-keypad', challenge[2]), 'hex')]));
+  assert.equal((await closed)[0], 1011);
+  assert.equal(existing.ws.readyState, WebSocket.OPEN);
+  added.ws.terminate();
+  existing.ws.terminate();
+});
 
 test('uses canonical length-prefixed authentication input and known HMAC vector', () => {
   assert.equal(authInput('controller1', 'nonce').toString('hex'), '000000196d696e64666c617965722d6465766963652d617574682d76310000000b636f6e74726f6c6c657231000000056e6f6e6365')
