@@ -109,6 +109,15 @@ test('only nonce-matched authenticated configuration proof reaches receivers; re
   })
   assert.equal(online.deviceAuthenticated, true)
   assert.equal(online.configurationVerifiedAt, verified.configurationVerifiedAt)
+  // Exercise the shipped CLI, not only the helper with a test-provided URL.
+  const cliOutput = await new Promise((resolve, reject) => {
+    const child = require('node:child_process').execFile(process.execPath,
+      [path.join(__dirname, '../scripts/verify-installation.js')],
+      { env: { ...process.env, FOUNDRY_PORT: String(runtime.foundry.server.address().port) }, timeout: 2000 },
+      (error, stdout) => error ? reject(error) : resolve(stdout))
+    child.stdin.end(JSON.stringify({ id: 'keypad', firmware: '1.2.3', digest: digest.toString('hex'), notBefore }))
+  })
+  assert.deepEqual(JSON.parse(cliOutput), online)
   // Sending alone must clear confirmation. Only the current command's nonce
   // can confirm colours; a superseded command and a replay are harmless.
   const colours = { led1: { r: 0, g: 1, b: 2 }, led2: { r: 3, g: 4, b: 5 } }

@@ -15,7 +15,7 @@ async function main() {
     firmware: input.firmware,
     digest: input.digest,
     notBefore: input.notBefore,
-    url: "ws://127.0.0.1:" + (process.env.FOUNDRY_PORT || "8080"),
+    url: "ws://127.0.0.1:" + (process.env.FOUNDRY_PORT || "8080") + "/ws",
   });
   process.stdout.write(JSON.stringify(result) + "\n");
 }
