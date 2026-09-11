@@ -1,3 +1,10 @@
+## [0.4.1](https://github.com/mindflayer-vtt/mindflayer-server/compare/v0.4.0...v0.4.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **provisioning:** verify installation through receiver endpoint ([5ab7abc](https://github.com/mindflayer-vtt/mindflayer-server/commit/5ab7abc4381b13c240737be5584688dbb58e7ad5))
+
 # [0.4.0](https://github.com/mindflayer-vtt/mindflayer-server/compare/v0.3.0...v0.4.0) (2026-09-11)
 
 
