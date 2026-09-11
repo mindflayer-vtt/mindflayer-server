@@ -1,6 +1,6 @@
 {
   "name": "mindflayer-server",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A lightweight websocket server for relaying messages to the Mind Flayer VTT module",
   "main": "src/index.js",
   "scripts": {

@@ -1,3 +1,10 @@
+# [0.4.0](https://github.com/mindflayer-vtt/mindflayer-server/compare/v0.3.0...v0.4.0) (2026-09-11)
+
+
+### Features
+
+* **keypads:** support verified installation and configuration ([fcb9b77](https://github.com/mindflayer-vtt/mindflayer-server/commit/fcb9b779e71863f3072957eab569158e6eddd213))
+
 # [0.3.0](https://github.com/mindflayer-vtt/mindflayer-server/compare/v0.2.2...v0.3.0) (2026-09-10)
 
 
