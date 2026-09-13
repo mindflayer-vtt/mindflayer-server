@@ -103,8 +103,13 @@ test(
     const registration = await known;
     assert.equal(registration.isBinary, false);
     assert.deepEqual(JSON.parse(registration.data), {
-      type: "registration", "controller-id": "controller1", status: "connected", receiver: false,
-      deviceAuthenticated: true, firmware: "1.2.3", hardware: "mindflayer-keypad-v1",
+      type: "registration",
+      "controller-id": "controller1",
+      status: "connected",
+      receiver: false,
+      deviceAuthenticated: true,
+      firmware: "1.2.3",
+      hardware: "mindflayer-keypad-v1",
     });
     const key = next(foundry);
     device.send(Buffer.from("8404020101", "hex"));
@@ -128,18 +133,41 @@ test(
     const encoded = await configuration;
     assert.equal(encoded.isBinary, true);
     assert.equal(encoded.data.toString("hex"), "880502010203040506");
-    const browser = new WebSocket(`ws://127.0.0.1:${runtime.foundry.server.address().port}/ws`);
+    const browser = new WebSocket(
+      `ws://127.0.0.1:${runtime.foundry.server.address().port}/ws`,
+    );
     sockets.push(browser);
     await once(browser, "open");
     const forged = next(foundry);
-    browser.send(JSON.stringify({ type: "registration", "controller-id": "browser", status: "connected", receiver: false,
-      deviceAuthenticated: true, firmware: "9.9.9", hardware: "forged-hardware" }));
+    browser.send(
+      JSON.stringify({
+        type: "registration",
+        "controller-id": "browser",
+        status: "connected",
+        receiver: false,
+        deviceAuthenticated: true,
+        firmware: "9.9.9",
+        hardware: "forged-hardware",
+      }),
+    );
     assert.deepEqual(JSON.parse((await forged).data), {
-      type: "registration", "controller-id": "browser", status: "connected", receiver: false,
-      deviceAuthenticated: false, firmware: null, hardware: null,
+      type: "registration",
+      "controller-id": "browser",
+      status: "connected",
+      receiver: false,
+      deviceAuthenticated: false,
+      firmware: null,
+      hardware: null,
     });
     const repeated = next(foundry);
-    device.send(cbor.encodeCanonical([TYPE.REGISTRATION, PROTOCOL_VERSION, "1.2.3", "mindflayer-keypad-v1"]));
+    device.send(
+      cbor.encodeCanonical([
+        TYPE.REGISTRATION,
+        PROTOCOL_VERSION,
+        "1.2.3",
+        "mindflayer-keypad-v1",
+      ]),
+    );
     assert.equal(JSON.parse((await repeated).data).deviceAuthenticated, true);
   },
 );

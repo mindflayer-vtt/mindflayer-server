@@ -9,12 +9,12 @@ const logLevels = {
   trace: 5,
 };
 
-const level = (process.env.NODE_ENV === "production")? 'info': 'trace'
+const level = process.env.NODE_ENV === "production" ? "info" : "trace";
 
 const logger = createLogger({
   level,
   levels: logLevels,
-  transports: [new transports.Console({level})],
+  transports: [new transports.Console({ level })],
 });
 
-module.exports = logger
+module.exports = logger;

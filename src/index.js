@@ -47,9 +47,15 @@ function deviceMetadata(connection) {
     deviceAuthenticated: authenticated,
     firmware: authenticated ? connection.firmwareVersion || null : null,
     hardware: authenticated ? connection.hardware || null : null,
-    ...(authenticated && connection.appliedLeds ? { appliedLeds: connection.appliedLeds } : {}),
-    ...(authenticated && connection.configurationDigest ? { configurationDigest: connection.configurationDigest,
-      configurationVerifiedAt: connection.configurationVerifiedAt } : {}),
+    ...(authenticated && connection.appliedLeds
+      ? { appliedLeds: connection.appliedLeds }
+      : {}),
+    ...(authenticated && connection.configurationDigest
+      ? {
+          configurationDigest: connection.configurationDigest,
+          configurationVerifiedAt: connection.configurationVerifiedAt,
+        }
+      : {}),
   };
 }
 
@@ -109,15 +115,28 @@ function registerProtocolHandlers(registry, dispatcher) {
       .getControllerConnections()
       .filter((conn) => conn.controllerId === message["controller-id"])
       .forEach((conn) => {
-        if (conn.deviceProtocol === 1 && conn.deviceProtocolVersion === CONFIGURATION_PROTOCOL_VERSION) {
+        if (
+          conn.deviceProtocol === 1 &&
+          conn.deviceProtocolVersion === CONFIGURATION_PROTOCOL_VERSION
+        ) {
           const nonce = crypto.randomBytes(32);
           const encoded = encodeLedCommand(message, nonce);
-          const colour = value => ({ r: value.r, g: value.g, b: value.b });
-          conn.pendingLeds = { nonce, colours: { led1: colour(message.led1), led2: colour(message.led2) } };
+          const colour = (value) => ({ r: value.r, g: value.g, b: value.b });
+          conn.pendingLeds = {
+            nonce,
+            colours: { led1: colour(message.led1), led2: colour(message.led2) },
+          };
           conn.appliedLeds = null;
-          registry.getReceiverConnections().forEach(receiver => receiver.send(JSON.stringify({
-            type: "led-state", "controller-id": conn.controllerId, deviceAuthenticated: true, appliedLeds: null,
-          })));
+          registry.getReceiverConnections().forEach((receiver) =>
+            receiver.send(
+              JSON.stringify({
+                type: "led-state",
+                "controller-id": conn.controllerId,
+                deviceAuthenticated: true,
+                appliedLeds: null,
+              }),
+            ),
+          );
           conn.send(encoded, { binary: true });
           return;
         }
@@ -138,10 +157,12 @@ function createFoundryApp(registry = new ConnectionRegistry()) {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   app.get("/healthz", (_req, res) => res.json({ status: "ok" }));
-  app.get("/api/capabilities", (_req, res) => res.json({
-    deviceProtocolVersions: [1, 2, CONFIGURATION_PROTOCOL_VERSION],
-    configurationProof: "sha256-canonical-envelope-v2",
-  }));
+  app.get("/api/capabilities", (_req, res) =>
+    res.json({
+      deviceProtocolVersions: [1, 2, CONFIGURATION_PROTOCOL_VERSION],
+      configurationProof: "sha256-canonical-envelope-v2",
+    }),
+  );
   app.post("/api/players/register", (req, res) => {
     res.end();
     const data = JSON.stringify({
@@ -400,32 +421,55 @@ function createDeviceServer(options = {}) {
             // another update offer can make it close WSS for an OTA download.
             if (ws.deviceProtocolVersion === CONFIGURATION_PROTOCOL_VERSION) {
               ws.configurationChallenge = crypto.randomBytes(32);
-              ws.send(encodeConfigurationQuery(ws.configurationChallenge), { binary: true });
+              ws.send(encodeConfigurationQuery(ws.configurationChallenge), {
+                binary: true,
+              });
             }
             ws.offerUpdate(message);
           } else if (message.type === "led-applied") {
             // Older acknowledgements can legitimately arrive after another
             // command superseded them. They must not confirm the newer state.
-            if (!ws.controllerId || !ws.pendingLeds || !safeBytesEqual(message.nonce, ws.pendingLeds.nonce)) return;
+            if (
+              !ws.controllerId ||
+              !ws.pendingLeds ||
+              !safeBytesEqual(message.nonce, ws.pendingLeds.nonce)
+            )
+              return;
             ws.appliedLeds = ws.pendingLeds.colours;
             ws.pendingLeds = null;
-            registry.getReceiverConnections().forEach(receiver => receiver.send(JSON.stringify({
-              type: "led-state", "controller-id": ws.authenticatedDeviceId,
-              deviceAuthenticated: true, appliedLeds: ws.appliedLeds,
-            })));
+            registry.getReceiverConnections().forEach((receiver) =>
+              receiver.send(
+                JSON.stringify({
+                  type: "led-state",
+                  "controller-id": ws.authenticatedDeviceId,
+                  deviceAuthenticated: true,
+                  appliedLeds: ws.appliedLeds,
+                }),
+              ),
+            );
           } else if (message.type === "configuration-report") {
-            if (!ws.controllerId || !ws.configurationChallenge || !safeBytesEqual(message.nonce, ws.configurationChallenge)) {
+            if (
+              !ws.controllerId ||
+              !ws.configurationChallenge ||
+              !safeBytesEqual(message.nonce, ws.configurationChallenge)
+            ) {
               ws.close(1008, "unexpected configuration report");
               return;
             }
             ws.configurationChallenge = null;
             ws.configurationDigest = message.digest.toString("hex");
             ws.configurationVerifiedAt = Date.now();
-            registry.getReceiverConnections().forEach((receiver) => receiver.send(JSON.stringify({
-              type: "configuration-state", "controller-id": ws.authenticatedDeviceId,
-              deviceAuthenticated: true, configurationDigest: ws.configurationDigest,
-              configurationVerifiedAt: ws.configurationVerifiedAt,
-            })));
+            registry.getReceiverConnections().forEach((receiver) =>
+              receiver.send(
+                JSON.stringify({
+                  type: "configuration-state",
+                  "controller-id": ws.authenticatedDeviceId,
+                  deviceAuthenticated: true,
+                  configurationDigest: ws.configurationDigest,
+                  configurationVerifiedAt: ws.configurationVerifiedAt,
+                }),
+              ),
+            );
           } else if (message.type === "key-event")
             dispatcher.dispatch(ws, {
               type: "key-event",

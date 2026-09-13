@@ -60,3 +60,4 @@ dist
 /firmware/*
 !/firmware/manifest.example.json
 .briefing/
+/.gitlab-ci-lsp-cache/
