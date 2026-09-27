@@ -1,3 +1,10 @@
+## [0.4.2](https://github.com/mindflayer-vtt/mindflayer-server/compare/v0.4.1...v0.4.2) (2026-09-27)
+
+
+### Bug Fixes
+
+* preserve keypad registration across overlapping reconnects ([e9e8edf](https://github.com/mindflayer-vtt/mindflayer-server/commit/e9e8edf8cc59fd04af538b27a5dcfabc22771558))
+
 ## [0.4.1](https://github.com/mindflayer-vtt/mindflayer-server/compare/v0.4.0...v0.4.1) (2026-09-11)
 
 
