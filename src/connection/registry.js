@@ -51,10 +51,20 @@ class ConnectionRegistry {
   }
 
   removeConnection(connection) {
+    if (!this.connections.includes(connection)) return;
     this.connections = this.connections.filter(
       (candidate) => candidate !== connection,
     );
-    if (this.dispatcher && connection.controllerId !== null) {
+    if (
+      this.dispatcher &&
+      connection.receiver === false &&
+      typeof connection.controllerId === "string" &&
+      !this.connections.some(
+        (candidate) =>
+          candidate.receiver === false &&
+          candidate.controllerId === connection.controllerId,
+      )
+    ) {
       this.dispatcher.dispatch(connection, {
         type: "registration",
         "controller-id": connection.controllerId,

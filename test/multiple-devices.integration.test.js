@@ -225,6 +225,55 @@ test(
     assert.equal(runtime.device.registry.getControllerConnections().length, 2);
     key(reconnected, 0, true);
     assert.equal((await foundry.next())["controller-id"], "keypad6");
+    // A physical replug can bring up a new socket while the old one still
+    // appears live. The older close must not un-register the replacement.
+    const replacement = await connect(credentials[0]);
+    assert.deepEqual(await foundry.next(), {
+      type: "registration",
+      "controller-id": "keypad6",
+      status: "connected",
+      receiver: false,
+      deviceAuthenticated: true,
+      firmware: "0.0.3-hwtest.1",
+      hardware: "mindflayer-keypad-v1",
+    });
+    await once(reconnected.ws, "close");
+    receiver.ping();
+    await once(receiver, "pong");
+    assert.equal(
+      foundry.received.filter(
+        (message) =>
+          message["controller-id"] === "keypad6" &&
+          message.status === "disconnected",
+      ).length,
+      1,
+    );
+    key(replacement, 0, false);
+    assert.deepEqual(await foundry.next(), {
+      type: "key-event",
+      "controller-id": "keypad6",
+      key: "Q",
+      state: "up",
+    });
+    // An unauthenticated browser cannot evict a physical device by claiming
+    // its controller ID.
+    const browser = new WebSocket(
+      `ws://127.0.0.1:${runtime.foundry.server.address().port}/ws`,
+    );
+    sockets.push(browser);
+    await once(browser, "open");
+    browser.send(
+      JSON.stringify({
+        type: "registration",
+        "controller-id": "keypad6",
+        status: "connected",
+        receiver: false,
+      }),
+    );
+    await foundry.next();
+    assert.equal(replacement.ws.readyState, WebSocket.OPEN);
+    key(replacement, 0, true);
+    assert.equal((await foundry.next()).type, "key-event");
     key(two, 10, false);
     assert.deepEqual(await foundry.next(), {
       type: "key-event",

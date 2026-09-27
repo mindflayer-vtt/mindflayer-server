@@ -94,6 +94,23 @@ function registerProtocolHandlers(registry, dispatcher) {
         ),
       );
     } else {
+      if (message.status === "connected" && connection.deviceAuthenticated) {
+        // A replugged keypad may authenticate before the old TCP connection
+        // times out. Retire that stale connection without announcing that the
+        // newly registered keypad has disconnected.
+        registry
+          .getControllerConnections()
+          .filter(
+            (candidate) =>
+              candidate !== connection &&
+              candidate.deviceAuthenticated === true &&
+              candidate.controllerId === connection.controllerId,
+          )
+          .forEach((candidate) => {
+            registry.removeConnection(candidate);
+            candidate.terminate();
+          });
+      }
       log.info(
         `Controller ${connection.controllerId} registered${connection.firmwareVersion ? ` firmware=${connection.firmwareVersion}` : ""}`,
       );
